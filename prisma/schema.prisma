@@ -1,0 +1,928 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum UserStatus {
+  active
+  blocked
+  deleted
+}
+
+enum UserRole {
+  customer
+  restaurant_staff
+  courier
+  operator
+  admin
+}
+
+enum Language {
+  ru
+  kk
+}
+
+enum OtpPurpose {
+  login
+  phone_verification
+}
+
+enum RestaurantStatus {
+  draft
+  active
+  paused
+  inactive
+}
+
+enum RestaurantIntegrationMode {
+  dashboard
+  iiko
+  r_keeper
+  custom_api
+}
+
+enum RestaurantStaffRole {
+  owner
+  manager
+  staff
+}
+
+enum OrderStatus {
+  created
+  pending_confirmation
+  accepted
+  preparing
+  ready_for_pickup
+  courier_assigned
+  picked_up
+  delivering
+  delivered
+  cancelled
+}
+
+enum PaymentMethod {
+  cash_to_courier
+  online_card
+}
+
+enum PaymentStatus {
+  pending
+  authorized
+  paid
+  failed
+  cancelled
+  refunded
+  partially_refunded
+}
+
+enum PaymentTransactionType {
+  authorize
+  capture
+  payment
+  refund
+  webhook
+  adjustment
+}
+
+enum PaymentProvider {
+  dev
+  cloudpayments
+  freedom_pay
+  kaspi
+}
+
+enum DeliveryStatus {
+  pending_assignment
+  assigned
+  picked_up
+  delivering
+  delivered
+  cancelled
+}
+
+enum CourierOfferStatus {
+  pending
+  accepted
+  rejected
+  expired
+  cancelled
+}
+
+enum CourierType {
+  staff
+  partner
+}
+
+enum CourierStatus {
+  inactive
+  available
+  busy
+  suspended
+}
+
+enum TransportType {
+  walking
+  bicycle
+  scooter
+  car
+}
+
+enum LedgerEntryType {
+  order_earning
+  cash_collected
+  cash_returned
+  payout
+  restaurant_order_payout
+  restaurant_commission
+  manual_adjustment
+}
+
+enum SettlementTargetType {
+  restaurant
+  courier
+}
+
+enum SettlementStatus {
+  pending
+  processing
+  paid
+  failed
+  cancelled
+}
+
+enum PromoDiscountType {
+  percent
+  fixed_amount
+  free_delivery
+  delivery_discount
+}
+
+enum NotificationChannel {
+  in_app
+  sms
+  telegram
+  whatsapp
+  email
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+  cancelled
+}
+
+model User {
+  id              String                @id @default(uuid()) @db.Uuid
+  phone           String                @unique
+  phoneVerifiedAt DateTime?
+  name            String?
+  status          UserStatus            @default(active)
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  addresses       Address[]
+  courier         Courier?
+  notifications   Notification[]
+  orders          Order[]               @relation("CustomerOrders")
+  restaurantStaff RestaurantStaff[]
+  roles           UserRoleAssignment[]
+  sessions        UserSession[]
+  preferences     UserPreference?
+  statusChanges   OrderStatusHistory[]  @relation("OrderStatusChangedBy")
+  assignedDeliveries Delivery[]         @relation("DeliveryAssignedBy")
+  auditLogs       AuditLog[]            @relation("AuditActor")
+  promoRedemptions PromocodeRedemption[]
+
+  @@map("users")
+}
+
+model UserRoleAssignment {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @db.Uuid
+  role      UserRole
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, role])
+  @@index([userId])
+  @@map("user_roles")
+}
+
+model UserPreference {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @unique @db.Uuid
+  language  Language @default(ru)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
+}
+
+model AuthVerificationCode {
+  id           String     @id @default(uuid()) @db.Uuid
+  phone        String
+  codeHash     String
+  purpose      OtpPurpose @default(login)
+  expiresAt    DateTime
+  consumedAt   DateTime?
+  attemptCount Int        @default(0)
+  createdAt    DateTime   @default(now())
+
+  @@index([phone, purpose])
+  @@map("auth_verification_codes")
+}
+
+model UserSession {
+  id               String    @id @default(uuid()) @db.Uuid
+  userId           String    @db.Uuid
+  sessionTokenHash String    @unique
+  expiresAt        DateTime
+  createdAt        DateTime  @default(now())
+  revokedAt        DateTime?
+  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("user_sessions")
+}
+
+model Address {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @db.Uuid
+  label       String?
+  city        String   @default("Алматы")
+  addressLine String
+  street      String?
+  house       String?
+  apartment   String?
+  entrance    String?
+  floor       String?
+  intercom    String?
+  comment     String?
+  latitude    Decimal? @db.Decimal(9, 6)
+  longitude   Decimal? @db.Decimal(9, 6)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("addresses")
+}
+
+model Restaurant {
+  id                       String                    @id @default(uuid()) @db.Uuid
+  slug                     String                    @unique
+  status                   RestaurantStatus          @default(draft)
+  integrationMode          RestaurantIntegrationMode @default(dashboard)
+  phone                    String?
+  addressLine              String
+  latitude                 Decimal?                  @db.Decimal(9, 6)
+  longitude                Decimal?                  @db.Decimal(9, 6)
+  deliveryRadiusMeters     Int?
+  minimumOrderAmount       Int                       @default(0)
+  defaultCommissionBps     Int                       @default(0)
+  createdAt                DateTime                  @default(now())
+  updatedAt                DateTime                  @updatedAt
+  categoryLinks            RestaurantCategoryLink[]
+  commissionRules          RestaurantCommissionRule[]
+  deliveries               Order[]
+  menuCategories           MenuCategory[]
+  menuItems                MenuItem[]
+  promoRestrictions        PromocodeRestaurant[]
+  staff                    RestaurantStaff[]
+  translations             RestaurantTranslation[]
+  workingHours             RestaurantWorkingHour[]
+  balance                  RestaurantBalance?
+  ledgerEntries            RestaurantLedgerEntry[]
+
+  @@map("restaurants")
+}
+
+model RestaurantTranslation {
+  id           String     @id @default(uuid()) @db.Uuid
+  restaurantId String     @db.Uuid
+  language     Language
+  name         String
+  description  String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, language])
+  @@map("restaurant_translations")
+}
+
+model RestaurantStaff {
+  id           String              @id @default(uuid()) @db.Uuid
+  restaurantId String              @db.Uuid
+  userId       String              @db.Uuid
+  role         RestaurantStaffRole  @default(staff)
+  createdAt    DateTime            @default(now())
+  restaurant   Restaurant          @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  user         User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, userId])
+  @@index([userId])
+  @@map("restaurant_staff")
+}
+
+model RestaurantCategory {
+  id           String                          @id @default(uuid()) @db.Uuid
+  slug         String                          @unique
+  sortOrder    Int                             @default(0)
+  isActive     Boolean                         @default(true)
+  createdAt    DateTime                        @default(now())
+  updatedAt    DateTime                        @updatedAt
+  restaurants  RestaurantCategoryLink[]
+  translations RestaurantCategoryTranslation[]
+
+  @@map("restaurant_categories")
+}
+
+model RestaurantCategoryTranslation {
+  id         String             @id @default(uuid()) @db.Uuid
+  categoryId String             @db.Uuid
+  language   Language
+  name       String
+  category   RestaurantCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([categoryId, language])
+  @@map("restaurant_category_translations")
+}
+
+model RestaurantCategoryLink {
+  id           String             @id @default(uuid()) @db.Uuid
+  restaurantId String             @db.Uuid
+  categoryId   String             @db.Uuid
+  restaurant   Restaurant         @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  category     RestaurantCategory @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, categoryId])
+  @@map("restaurant_category_links")
+}
+
+model RestaurantWorkingHour {
+  id           String     @id @default(uuid()) @db.Uuid
+  restaurantId String     @db.Uuid
+  weekday      Int
+  opensAt      String?
+  closesAt     String?
+  isClosed     Boolean    @default(false)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([restaurantId, weekday])
+  @@map("restaurant_working_hours")
+}
+
+model MenuCategory {
+  id           String                    @id @default(uuid()) @db.Uuid
+  restaurantId String                    @db.Uuid
+  sortOrder    Int                       @default(0)
+  isActive     Boolean                   @default(true)
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+  items        MenuItem[]
+  restaurant   Restaurant                @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  translations MenuCategoryTranslation[]
+
+  @@index([restaurantId])
+  @@map("menu_categories")
+}
+
+model MenuCategoryTranslation {
+  id             String       @id @default(uuid()) @db.Uuid
+  menuCategoryId String       @db.Uuid
+  language       Language
+  name           String
+  menuCategory   MenuCategory @relation(fields: [menuCategoryId], references: [id], onDelete: Cascade)
+
+  @@unique([menuCategoryId, language])
+  @@map("menu_category_translations")
+}
+
+model MenuItem {
+  id             String                 @id @default(uuid()) @db.Uuid
+  restaurantId   String                 @db.Uuid
+  menuCategoryId String                 @db.Uuid
+  price          Int
+  currency       String                 @default("KZT")
+  imageUrl       String?
+  isActive       Boolean                @default(true)
+  isAvailable    Boolean                @default(true)
+  sortOrder      Int                    @default(0)
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+  menuCategory   MenuCategory           @relation(fields: [menuCategoryId], references: [id], onDelete: Cascade)
+  options        MenuItemOption[]
+  orderItems     OrderItem[]
+  restaurant     Restaurant             @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+  translations   MenuItemTranslation[]
+
+  @@index([restaurantId])
+  @@index([menuCategoryId])
+  @@map("menu_items")
+}
+
+model MenuItemTranslation {
+  id          String   @id @default(uuid()) @db.Uuid
+  menuItemId  String   @db.Uuid
+  language    Language
+  name        String
+  description String?
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, language])
+  @@map("menu_item_translations")
+}
+
+model MenuItemOption {
+  id          String                @id @default(uuid()) @db.Uuid
+  menuItemId  String                @db.Uuid
+  type        String
+  isRequired  Boolean               @default(false)
+  minSelected Int                   @default(0)
+  maxSelected Int?
+  createdAt   DateTime              @default(now())
+  updatedAt   DateTime              @updatedAt
+  menuItem    MenuItem              @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  values      MenuItemOptionValue[]
+
+  @@index([menuItemId])
+  @@map("menu_item_options")
+}
+
+model MenuItemOptionValue {
+  id           String                           @id @default(uuid()) @db.Uuid
+  optionId     String                           @db.Uuid
+  priceDelta   Int                              @default(0)
+  currency     String                           @default("KZT")
+  isAvailable  Boolean                          @default(true)
+  sortOrder    Int                              @default(0)
+  option       MenuItemOption                   @relation(fields: [optionId], references: [id], onDelete: Cascade)
+  translations MenuItemOptionValueTranslation[]
+
+  @@index([optionId])
+  @@map("menu_item_option_values")
+}
+
+model MenuItemOptionValueTranslation {
+  id            String              @id @default(uuid()) @db.Uuid
+  optionValueId String              @db.Uuid
+  language      Language
+  name          String
+  optionValue   MenuItemOptionValue @relation(fields: [optionValueId], references: [id], onDelete: Cascade)
+
+  @@unique([optionValueId, language])
+  @@map("menu_item_option_value_translations")
+}
+
+model Order {
+  id                String                @id @default(uuid()) @db.Uuid
+  publicNumber      String                @unique
+  customerId        String                @db.Uuid
+  restaurantId      String                @db.Uuid
+  status            OrderStatus           @default(created)
+  paymentMethod     PaymentMethod
+  paymentStatus     PaymentStatus         @default(pending)
+  customerComment   String?
+  restaurantComment String?
+  createdAt         DateTime              @default(now())
+  acceptedAt        DateTime?
+  cancelledAt       DateTime?
+  deliveredAt       DateTime?
+  updatedAt         DateTime              @updatedAt
+  customer          User                  @relation("CustomerOrders", fields: [customerId], references: [id])
+  delivery          Delivery?
+  deliveryAddress   OrderDeliveryAddress?
+  deliveryFeeCalculation DeliveryFeeCalculation?
+  financials        OrderFinancial?
+  items             OrderItem[]
+  payments          Payment[]
+  promoRedemptions  PromocodeRedemption[]
+  restaurant        Restaurant            @relation(fields: [restaurantId], references: [id])
+  statusHistory     OrderStatusHistory[]
+  courierLedgerEntries CourierLedgerEntry[]
+  restaurantLedgerEntries RestaurantLedgerEntry[]
+
+  @@index([customerId])
+  @@index([restaurantId])
+  @@index([status])
+  @@index([createdAt])
+  @@map("orders")
+}
+
+model OrderItem {
+  id                  String    @id @default(uuid()) @db.Uuid
+  orderId             String    @db.Uuid
+  menuItemId          String?   @db.Uuid
+  nameSnapshot        String
+  descriptionSnapshot String?
+  unitPrice           Int
+  quantity            Int
+  totalPrice          Int
+  currency            String    @default("KZT")
+  optionsSnapshot     Json?
+  comment             String?
+  createdAt           DateTime  @default(now())
+  menuItem            MenuItem? @relation(fields: [menuItemId], references: [id], onDelete: SetNull)
+  order               Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([menuItemId])
+  @@map("order_items")
+}
+
+model OrderDeliveryAddress {
+  id            String   @id @default(uuid()) @db.Uuid
+  orderId       String   @unique @db.Uuid
+  nameSnapshot  String
+  phoneSnapshot String
+  city          String   @default("Алматы")
+  addressLine   String
+  street        String?
+  house         String?
+  apartment     String?
+  entrance      String?
+  floor         String?
+  intercom      String?
+  comment       String?
+  latitude      Decimal? @db.Decimal(9, 6)
+  longitude     Decimal? @db.Decimal(9, 6)
+  order         Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_delivery_address")
+}
+
+model OrderStatusHistory {
+  id              String       @id @default(uuid()) @db.Uuid
+  orderId         String       @db.Uuid
+  fromStatus      OrderStatus?
+  toStatus        OrderStatus
+  changedByUserId String?      @db.Uuid
+  comment         String?
+  createdAt       DateTime     @default(now())
+  changedBy       User?        @relation("OrderStatusChangedBy", fields: [changedByUserId], references: [id], onDelete: SetNull)
+  order           Order        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([changedByUserId])
+  @@map("order_status_history")
+}
+
+model OrderFinancial {
+  id                   String   @id @default(uuid()) @db.Uuid
+  orderId              String   @unique @db.Uuid
+  itemsSubtotal        Int
+  deliveryFee          Int
+  serviceFee           Int
+  discountTotal        Int      @default(0)
+  customerTotal        Int
+  restaurantCommission Int
+  restaurantPayout     Int
+  courierEarning       Int
+  platformRevenue      Int
+  currency             String   @default("KZT")
+  createdAt            DateTime @default(now())
+  order                Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("order_financials")
+}
+
+model Delivery {
+  id               String         @id @default(uuid()) @db.Uuid
+  orderId          String         @unique @db.Uuid
+  courierId        String?        @db.Uuid
+  status           DeliveryStatus @default(pending_assignment)
+  assignedByUserId String?        @db.Uuid
+  assignedAt       DateTime?
+  pickedUpAt       DateTime?
+  deliveredAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  assignedBy       User?          @relation("DeliveryAssignedBy", fields: [assignedByUserId], references: [id], onDelete: SetNull)
+  courier          Courier?       @relation(fields: [courierId], references: [id], onDelete: SetNull)
+  order            Order          @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  offers           CourierOffer[]
+
+  @@index([courierId])
+  @@index([status])
+  @@map("deliveries")
+}
+
+model CourierOffer {
+  id          String             @id @default(uuid()) @db.Uuid
+  deliveryId  String             @db.Uuid
+  courierId   String             @db.Uuid
+  status      CourierOfferStatus @default(pending)
+  sequence    Int
+  offeredAt   DateTime           @default(now())
+  expiresAt   DateTime
+  respondedAt DateTime?
+  createdAt   DateTime           @default(now())
+  courier     Courier            @relation(fields: [courierId], references: [id], onDelete: Cascade)
+  delivery    Delivery           @relation(fields: [deliveryId], references: [id], onDelete: Cascade)
+
+  @@unique([deliveryId, courierId])
+  @@index([deliveryId, status])
+  @@index([courierId, status])
+  @@index([expiresAt])
+  @@map("courier_offers")
+}
+
+model DeliveryFeeCalculation {
+  id                  String   @id @default(uuid()) @db.Uuid
+  orderId             String   @unique @db.Uuid
+  restaurantLatitude  Decimal? @db.Decimal(9, 6)
+  restaurantLongitude Decimal? @db.Decimal(9, 6)
+  customerLatitude    Decimal? @db.Decimal(9, 6)
+  customerLongitude   Decimal? @db.Decimal(9, 6)
+  distanceMeters      Int
+  baseFee             Int
+  perKmFee            Int
+  minFee              Int?
+  maxFee              Int?
+  manualAdjustment    Int      @default(0)
+  finalFee            Int
+  currency            String   @default("KZT")
+  source              String   @default("distance")
+  createdAt           DateTime @default(now())
+  order               Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@map("delivery_fee_calculations")
+}
+
+model DeliveryPricingRule {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  baseFee   Int
+  perKmFee  Int
+  minFee    Int?
+  maxFee    Int?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("delivery_pricing_rules")
+}
+
+model Courier {
+  id            String              @id @default(uuid()) @db.Uuid
+  userId        String              @unique @db.Uuid
+  type          CourierType
+  status        CourierStatus       @default(inactive)
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  availability  CourierAvailability?
+  balance       CourierBalance?
+  deliveries    Delivery[]
+  ledgerEntries CourierLedgerEntry[]
+  offers        CourierOffer[]
+  profile       CourierProfile?
+  user          User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("couriers")
+}
+
+model CourierProfile {
+  id             String        @id @default(uuid()) @db.Uuid
+  courierId      String        @unique @db.Uuid
+  fullName       String
+  phone          String
+  transportType  TransportType
+  documentNumber String?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  courier        Courier       @relation(fields: [courierId], references: [id], onDelete: Cascade)
+
+  @@map("courier_profiles")
+}
+
+model CourierAvailability {
+  id        String        @id @default(uuid()) @db.Uuid
+  courierId String        @unique @db.Uuid
+  status    CourierStatus @default(inactive)
+  latitude  Decimal?      @db.Decimal(9, 6)
+  longitude Decimal?      @db.Decimal(9, 6)
+  updatedAt DateTime      @updatedAt
+  courier   Courier       @relation(fields: [courierId], references: [id], onDelete: Cascade)
+
+  @@map("courier_availability")
+}
+
+model CourierBalance {
+  id        String   @id @default(uuid()) @db.Uuid
+  courierId String   @unique @db.Uuid
+  balance   Int      @default(0)
+  currency  String   @default("KZT")
+  updatedAt DateTime @updatedAt
+  courier   Courier  @relation(fields: [courierId], references: [id], onDelete: Cascade)
+
+  @@map("courier_balances")
+}
+
+model CourierLedgerEntry {
+  id          String          @id @default(uuid()) @db.Uuid
+  courierId   String          @db.Uuid
+  orderId     String?         @db.Uuid
+  type        LedgerEntryType
+  amount      Int
+  currency    String          @default("KZT")
+  description String?
+  createdAt   DateTime        @default(now())
+  courier     Courier         @relation(fields: [courierId], references: [id], onDelete: Cascade)
+  order       Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([courierId])
+  @@index([orderId])
+  @@map("courier_ledger_entries")
+}
+
+model Payment {
+  id           String               @id @default(uuid()) @db.Uuid
+  orderId      String               @db.Uuid
+  method       PaymentMethod
+  status       PaymentStatus        @default(pending)
+  amount       Int
+  currency     String               @default("KZT")
+  provider     PaymentProvider      @default(dev)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  order        Order                @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  transactions PaymentTransaction[]
+
+  @@index([orderId])
+  @@map("payments")
+}
+
+model PaymentTransaction {
+  id                    String                 @id @default(uuid()) @db.Uuid
+  paymentId             String                 @db.Uuid
+  provider              PaymentProvider
+  providerTransactionId String?
+  type                  PaymentTransactionType
+  status                PaymentStatus
+  amount                Int
+  currency              String                 @default("KZT")
+  rawPayload            Json?
+  createdAt             DateTime               @default(now())
+  payment               Payment                @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@index([paymentId])
+  @@index([providerTransactionId])
+  @@map("payment_transactions")
+}
+
+model RestaurantBalance {
+  id           String     @id @default(uuid()) @db.Uuid
+  restaurantId String     @unique @db.Uuid
+  balance      Int        @default(0)
+  currency     String     @default("KZT")
+  updatedAt    DateTime   @updatedAt
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@map("restaurant_balances")
+}
+
+model RestaurantLedgerEntry {
+  id           String          @id @default(uuid()) @db.Uuid
+  restaurantId String          @db.Uuid
+  orderId      String?         @db.Uuid
+  type         LedgerEntryType
+  amount       Int
+  currency     String          @default("KZT")
+  description  String?
+  createdAt    DateTime        @default(now())
+  order        Order?          @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  restaurant   Restaurant      @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@index([orderId])
+  @@map("restaurant_ledger_entries")
+}
+
+model Settlement {
+  id         String               @id @default(uuid()) @db.Uuid
+  targetType SettlementTargetType
+  targetId   String               @db.Uuid
+  amount     Int
+  currency   String               @default("KZT")
+  status     SettlementStatus     @default(pending)
+  periodFrom DateTime
+  periodTo   DateTime
+  createdAt  DateTime             @default(now())
+  paidAt     DateTime?
+
+  @@index([targetType, targetId])
+  @@map("settlements")
+}
+
+model RestaurantCommissionRule {
+  id           String     @id @default(uuid()) @db.Uuid
+  restaurantId String     @db.Uuid
+  commissionBps Int
+  startsAt     DateTime?
+  endsAt       DateTime?
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@index([restaurantId])
+  @@map("restaurant_commission_rules")
+}
+
+model ServiceFeeRule {
+  id              String   @id @default(uuid()) @db.Uuid
+  name            String
+  fixedFee        Int      @default(0)
+  percentBps      Int      @default(0)
+  minOrderAmount  Int?
+  maxFee          Int?
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("service_fee_rules")
+}
+
+model Promocode {
+  id                String                   @id @default(uuid()) @db.Uuid
+  code              String                   @unique
+  discountType      PromoDiscountType
+  discountValue     Int
+  minOrderAmount    Int?
+  startsAt          DateTime?
+  endsAt            DateTime?
+  totalUsageLimit   Int?
+  perUserUsageLimit Int?
+  isActive          Boolean                  @default(true)
+  createdAt         DateTime                 @default(now())
+  updatedAt         DateTime                 @updatedAt
+  redemptions       PromocodeRedemption[]
+  restaurants       PromocodeRestaurant[]
+
+  @@map("promocodes")
+}
+
+model PromocodeRestaurant {
+  id           String     @id @default(uuid()) @db.Uuid
+  promocodeId  String     @db.Uuid
+  restaurantId String     @db.Uuid
+  promocode    Promocode  @relation(fields: [promocodeId], references: [id], onDelete: Cascade)
+  restaurant   Restaurant @relation(fields: [restaurantId], references: [id], onDelete: Cascade)
+
+  @@unique([promocodeId, restaurantId])
+  @@map("promocode_restaurants")
+}
+
+model PromocodeRedemption {
+  id             String    @id @default(uuid()) @db.Uuid
+  promocodeId    String    @db.Uuid
+  userId         String    @db.Uuid
+  orderId        String    @db.Uuid
+  discountAmount Int
+  createdAt      DateTime  @default(now())
+  order          Order     @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  promocode      Promocode @relation(fields: [promocodeId], references: [id], onDelete: Cascade)
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([promocodeId, orderId])
+  @@index([userId])
+  @@map("promocode_redemptions")
+}
+
+model Notification {
+  id        String              @id @default(uuid()) @db.Uuid
+  userId    String?             @db.Uuid
+  channel   NotificationChannel
+  type      String
+  title     String
+  body      String
+  status    NotificationStatus  @default(pending)
+  createdAt DateTime            @default(now())
+  sentAt    DateTime?
+  user      User?               @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([status])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?  @db.Uuid
+  entityType  String
+  entityId    String
+  action      String
+  metadata    Json?
+  createdAt   DateTime @default(now())
+  actor       User?    @relation("AuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+
+  @@index([actorUserId])
+  @@index([entityType, entityId])
+  @@map("audit_logs")
+}
