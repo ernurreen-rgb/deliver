@@ -53,6 +53,9 @@ export async function getRestaurantMenu(slug: string) {
     include: {
       translations: true,
       menuCategories: {
+        where: {
+          isActive: true,
+        },
         orderBy: { sortOrder: "asc" },
         include: {
           translations: true,

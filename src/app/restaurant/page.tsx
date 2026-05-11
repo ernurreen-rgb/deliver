@@ -235,8 +235,16 @@ export default async function RestaurantDashboardPage({
               Ресторан подтверждает заказ, ведет приготовление и отмечает готовность к выдаче.
             </p>
           </div>
-          <div className="rounded-md border border-border px-3 py-2 text-sm text-foreground/65">
-            Роль: {dashboard.restaurant.role}
+          <div className="flex flex-wrap gap-2">
+            <Link
+              href="/restaurant/menu"
+              className="rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground/75 transition-colors hover:border-accent hover:text-accent"
+            >
+              Меню
+            </Link>
+            <div className="rounded-md border border-border px-3 py-2 text-sm text-foreground/65">
+              Роль: {dashboard.restaurant.role}
+            </div>
           </div>
         </div>
 
