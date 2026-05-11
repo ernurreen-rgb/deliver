@@ -4,6 +4,8 @@ import { getPrisma } from "@/lib/db/prisma";
 
 export const COURIER_OFFER_TIMEOUT_MS = 60_000;
 
+const activeDeliveryStatuses = ["assigned", "picked_up", "delivering"] as const;
+
 const dispatchableOrderStatuses = [
   "accepted",
   "preparing",
@@ -11,6 +13,24 @@ const dispatchableOrderStatuses = [
 ] as const;
 
 type DispatchableOrderStatus = (typeof dispatchableOrderStatuses)[number];
+
+class CourierUnavailableError extends Error {
+  constructor(
+    readonly deliveryId: string,
+    readonly publicNumber: string,
+  ) {
+    super("Courier is no longer available.");
+  }
+}
+
+class OfferUnavailableError extends Error {
+  constructor(
+    readonly deliveryId: string,
+    readonly publicNumber: string,
+  ) {
+    super("Offer is no longer available.");
+  }
+}
 
 export type DispatchOfferResult =
   | { status: "offer_created"; offerId: string; courierId: string }
@@ -114,6 +134,11 @@ export async function dispatchNextCourierOffer(
         notIn: Array.from(excludedCourierIds),
       },
       status: "available",
+      deliveries: {
+        none: {
+          status: { in: [...activeDeliveryStatuses] },
+        },
+      },
       availability: {
         is: {
           status: "available",
@@ -253,160 +278,327 @@ export async function acceptCourierOfferForUser(input: {
     return { status: "courier_not_found" as const };
   }
 
-  const accepted = await prisma.$transaction(async (tx) => {
-    const offer = await tx.courierOffer.findFirst({
-      where: {
-        id: input.offerId,
-        courierId: courier.id,
-      },
-      include: {
-        delivery: {
-          include: {
-            order: {
-              select: {
-                id: true,
-                publicNumber: true,
-                status: true,
+  try {
+    const accepted = await prisma.$transaction(async (tx) => {
+      const offer = await tx.courierOffer.findFirst({
+        where: {
+          id: input.offerId,
+          courierId: courier.id,
+        },
+        include: {
+          delivery: {
+            include: {
+              order: {
+                select: {
+                  id: true,
+                  publicNumber: true,
+                  status: true,
+                },
               },
             },
           },
         },
-      },
-    });
+      });
 
-    if (!offer) {
-      return { status: "offer_not_found" as const };
-    }
+      if (!offer) {
+        return { status: "offer_not_found" as const };
+      }
 
-    if (offer.status !== "pending") {
-      return {
-        status: "offer_unavailable" as const,
-        publicNumber: offer.delivery.order.publicNumber,
-      };
-    }
+      if (offer.status !== "pending") {
+        return {
+          status: "offer_unavailable" as const,
+          publicNumber: offer.delivery.order.publicNumber,
+        };
+      }
 
-    if (offer.expiresAt <= now) {
-      await tx.courierOffer.updateMany({
+      if (offer.expiresAt <= now) {
+        await tx.courierOffer.updateMany({
+          where: {
+            id: offer.id,
+            status: "pending",
+          },
+          data: {
+            status: "expired",
+            respondedAt: now,
+          },
+        });
+
+        return {
+          status: "offer_expired" as const,
+          deliveryId: offer.deliveryId,
+          publicNumber: offer.delivery.order.publicNumber,
+        };
+      }
+
+      if (!isDispatchableOrderStatus(offer.delivery.order.status)) {
+        throw new OfferUnavailableError(
+          offer.deliveryId,
+          offer.delivery.order.publicNumber,
+        );
+      }
+
+      const activeDeliveryCount = await tx.delivery.count({
+        where: {
+          courierId: courier.id,
+          status: { in: [...activeDeliveryStatuses] },
+        },
+      });
+
+      if (activeDeliveryCount > 0) {
+        throw new CourierUnavailableError(
+          offer.deliveryId,
+          offer.delivery.order.publicNumber,
+        );
+      }
+
+      const courierUpdate = await tx.courier.updateMany({
+        where: {
+          id: courier.id,
+          status: "available",
+        },
+        data: {
+          status: "busy",
+        },
+      });
+
+      if (courierUpdate.count !== 1) {
+        throw new CourierUnavailableError(
+          offer.deliveryId,
+          offer.delivery.order.publicNumber,
+        );
+      }
+
+      const availabilityUpdate = await tx.courierAvailability.updateMany({
+        where: {
+          courierId: courier.id,
+          status: "available",
+        },
+        data: {
+          status: "busy",
+        },
+      });
+
+      if (availabilityUpdate.count !== 1) {
+        throw new CourierUnavailableError(
+          offer.deliveryId,
+          offer.delivery.order.publicNumber,
+        );
+      }
+
+      const offerUpdate = await tx.courierOffer.updateMany({
         where: {
           id: offer.id,
+          courierId: courier.id,
+          status: "pending",
+          expiresAt: { gt: now },
+        },
+        data: {
+          status: "accepted",
+          respondedAt: now,
+        },
+      });
+
+      if (offerUpdate.count !== 1) {
+        throw new OfferUnavailableError(
+          offer.deliveryId,
+          offer.delivery.order.publicNumber,
+        );
+      }
+
+      const deliveryUpdate = await tx.delivery.updateMany({
+        where: {
+          id: offer.deliveryId,
+          courierId: null,
+          status: "pending_assignment",
+        },
+        data: {
+          courierId: courier.id,
+          status: "assigned",
+          assignedByUserId: input.userId,
+          assignedAt: now,
+        },
+      });
+
+      if (deliveryUpdate.count !== 1) {
+        throw new OfferUnavailableError(
+          offer.deliveryId,
+          offer.delivery.order.publicNumber,
+        );
+      }
+
+      const orderUpdate = await tx.order.updateMany({
+        where: {
+          id: offer.delivery.orderId,
+          status: { in: [...dispatchableOrderStatuses] },
+        },
+        data: {
+          status: "courier_assigned",
+        },
+      });
+
+      if (orderUpdate.count !== 1) {
+        throw new OfferUnavailableError(
+          offer.deliveryId,
+          offer.delivery.order.publicNumber,
+        );
+      }
+
+      await tx.orderStatusHistory.create({
+        data: {
+          orderId: offer.delivery.orderId,
+          fromStatus: offer.delivery.order.status,
+          toStatus: "courier_assigned",
+          changedByUserId: input.userId,
+          comment: "Courier accepted delivery offer.",
+        },
+      });
+
+      await tx.courierOffer.updateMany({
+        where: {
+          deliveryId: offer.deliveryId,
+          id: { not: offer.id },
           status: "pending",
         },
         data: {
-          status: "expired",
+          status: "cancelled",
+          respondedAt: now,
+        },
+      });
+
+      const supersededCourierOffers = await tx.courierOffer.findMany({
+        where: {
+          courierId: courier.id,
+          deliveryId: { not: offer.deliveryId },
+          status: "pending",
+        },
+        select: {
+          deliveryId: true,
+        },
+      });
+
+      await tx.courierOffer.updateMany({
+        where: {
+          courierId: courier.id,
+          deliveryId: { not: offer.deliveryId },
+          status: "pending",
+        },
+        data: {
+          status: "cancelled",
           respondedAt: now,
         },
       });
 
       return {
-        status: "offer_expired" as const,
-        deliveryId: offer.deliveryId,
+        status: "accepted" as const,
         publicNumber: offer.delivery.order.publicNumber,
+        redispatchDeliveryIds: [
+          ...new Set(
+            supersededCourierOffers.map((otherOffer) => otherOffer.deliveryId),
+          ),
+        ],
+      };
+    });
+
+    if (accepted.status === "offer_expired") {
+      await dispatchNextCourierOffer(accepted.deliveryId, now);
+    }
+
+    if (accepted.status === "accepted") {
+      for (const deliveryId of accepted.redispatchDeliveryIds) {
+        await dispatchNextCourierOffer(deliveryId, now);
+      }
+    }
+
+    return accepted;
+  } catch (error) {
+    if (error instanceof CourierUnavailableError) {
+      await prisma.courierOffer.updateMany({
+        where: {
+          id: input.offerId,
+          courierId: courier.id,
+          status: "pending",
+        },
+        data: {
+          status: "cancelled",
+          respondedAt: now,
+        },
+      });
+
+      await dispatchNextCourierOffer(error.deliveryId, now);
+
+      return {
+        status: "courier_unavailable" as const,
+        publicNumber: error.publicNumber,
       };
     }
 
-    const offerUpdate = await tx.courierOffer.updateMany({
-      where: {
-        id: offer.id,
-        courierId: courier.id,
-        status: "pending",
-        expiresAt: { gt: now },
-      },
-      data: {
-        status: "accepted",
-        respondedAt: now,
-      },
-    });
+    if (error instanceof OfferUnavailableError) {
+      await prisma.courierOffer.updateMany({
+        where: {
+          id: input.offerId,
+          courierId: courier.id,
+          status: "pending",
+        },
+        data: {
+          status: "cancelled",
+          respondedAt: now,
+        },
+      });
 
-    if (offerUpdate.count !== 1) {
+      await dispatchNextCourierOffer(error.deliveryId, now);
+
       return {
         status: "offer_unavailable" as const,
-        publicNumber: offer.delivery.order.publicNumber,
+        publicNumber: error.publicNumber,
       };
     }
 
-    const deliveryUpdate = await tx.delivery.updateMany({
-      where: {
-        id: offer.deliveryId,
-        courierId: null,
-        status: "pending_assignment",
-      },
-      data: {
-        courierId: courier.id,
-        status: "assigned",
-        assignedByUserId: input.userId,
-        assignedAt: now,
-      },
-    });
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2002"
+    ) {
+      const offer = await prisma.courierOffer.findFirst({
+        where: {
+          id: input.offerId,
+          courierId: courier.id,
+        },
+        include: {
+          delivery: {
+            include: {
+              order: {
+                select: {
+                  publicNumber: true,
+                },
+              },
+            },
+          },
+        },
+      });
 
-    if (deliveryUpdate.count !== 1) {
-      throw new Error("Delivery was already assigned before offer acceptance.");
+      if (offer) {
+        await prisma.courierOffer.updateMany({
+          where: {
+            id: offer.id,
+            courierId: courier.id,
+            status: "pending",
+          },
+          data: {
+            status: "cancelled",
+            respondedAt: now,
+          },
+        });
+
+        await dispatchNextCourierOffer(offer.deliveryId, now);
+
+        return {
+          status: "courier_unavailable" as const,
+          publicNumber: offer.delivery.order.publicNumber,
+        };
+      }
     }
 
-    if (!isDispatchableOrderStatus(offer.delivery.order.status)) {
-      throw new Error("Order is not dispatchable.");
-    }
-
-    const orderUpdate = await tx.order.updateMany({
-      where: {
-        id: offer.delivery.orderId,
-        status: { in: [...dispatchableOrderStatuses] },
-      },
-      data: {
-        status: "courier_assigned",
-      },
-    });
-
-    if (orderUpdate.count !== 1) {
-      throw new Error("Order status changed before courier assignment.");
-    }
-
-    await tx.orderStatusHistory.create({
-      data: {
-        orderId: offer.delivery.orderId,
-        fromStatus: offer.delivery.order.status,
-        toStatus: "courier_assigned",
-        changedByUserId: input.userId,
-        comment: "Courier accepted delivery offer.",
-      },
-    });
-
-    await tx.courier.update({
-      where: { id: courier.id },
-      data: {
-        status: "busy",
-      },
-    });
-
-    await tx.courierAvailability.updateMany({
-      where: { courierId: courier.id },
-      data: {
-        status: "busy",
-      },
-    });
-
-    await tx.courierOffer.updateMany({
-      where: {
-        deliveryId: offer.deliveryId,
-        id: { not: offer.id },
-        status: "pending",
-      },
-      data: {
-        status: "cancelled",
-        respondedAt: now,
-      },
-    });
-
-    return {
-      status: "accepted" as const,
-      publicNumber: offer.delivery.order.publicNumber,
-    };
-  });
-
-  if (accepted.status === "offer_expired") {
-    await dispatchNextCourierOffer(accepted.deliveryId, now);
+    throw error;
   }
-
-  return accepted;
 }
 
 export async function rejectCourierOfferForUser(input: {

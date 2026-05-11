@@ -8,6 +8,8 @@
     "start": "next start",
     "postinstall": "prisma generate",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "db:dev:start": "powershell -ExecutionPolicy Bypass -File scripts/start-prisma-dev.ps1",
     "db:dev:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-prisma-dev.ps1",
     "db:dev:ls": "powershell -ExecutionPolicy Bypass -File scripts/list-prisma-dev.ps1",
@@ -39,6 +41,7 @@
     "prisma": "^7.8.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.6"
   }
 }

@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { cookies } from "next/headers";
 import { getPrisma } from "@/lib/db/prisma";
 import {
@@ -51,7 +52,7 @@ export async function destroySession() {
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
-export async function getCurrentUser() {
+export const getCurrentUser = cache(async function getCurrentUser() {
   const cookieStore = await cookies();
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
@@ -63,21 +64,33 @@ export async function getCurrentUser() {
     where: {
       sessionTokenHash: sha256(token),
     },
-    include: {
+    select: {
+      revokedAt: true,
+      expiresAt: true,
       user: {
-        include: {
-          addresses: true,
-          orders: true,
-          preferences: true,
-          roles: true,
+        select: {
+          id: true,
+          phone: true,
+          name: true,
+          status: true,
+          roles: {
+            select: {
+              role: true,
+            },
+          },
         },
       },
     },
   });
 
-  if (!session || session.revokedAt || session.expiresAt < new Date()) {
+  if (
+    !session ||
+    session.revokedAt ||
+    session.expiresAt < new Date() ||
+    session.user.status !== "active"
+  ) {
     return null;
   }
 
   return session.user;
-}
+});

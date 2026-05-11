@@ -1,10 +1,13 @@
 import { SurfaceShell } from "@/components/layout/surface-shell";
 import { InfoTile } from "@/components/shared/info-tile";
+import { requireAnyRole } from "@/domains/auth/authorization";
 import { getAdminStats } from "@/domains/admin/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
+  await requireAnyRole(["admin"]);
+
   const stats = await getAdminStats();
 
   return (

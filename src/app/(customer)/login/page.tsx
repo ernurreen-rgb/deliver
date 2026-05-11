@@ -4,7 +4,7 @@ import {
   requestOtpAction,
   verifyOtpAction,
 } from "@/domains/auth/actions";
-import { DEV_OTP_CODE } from "@/domains/auth/constants";
+import { DEV_OTP_CODE, isDevOtpEnabled } from "@/domains/auth/constants";
 
 type LoginPageProps = {
   searchParams: Promise<{
@@ -15,6 +15,9 @@ type LoginPageProps = {
 };
 
 const errorMessages: Record<string, string> = {
+  otp_provider_unavailable: "Отправка кода пока доступна только в dev-режиме.",
+  too_many_attempts: "Слишком много попыток. Запросите новый код.",
+  user_unavailable: "Аккаунт недоступен. Обратитесь в поддержку.",
   invalid_phone: "Введите номер Казахстана в формате +7XXXXXXXXXX.",
   invalid_code: "Введите номер телефона и код.",
   expired_code: "Код истек. Запросите новый код.",
@@ -25,6 +28,8 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const phone = params.phone ?? "";
   const isSent = params.sent === "1";
+  const devOtpEnabled = isDevOtpEnabled();
+  const showDevCode = isSent && devOtpEnabled;
   const errorMessage = params.error ? errorMessages[params.error] : null;
 
   return (
@@ -52,7 +57,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
             </button>
           </form>
 
-          {isSent ? (
+          {showDevCode ? (
             <div className="mt-5 rounded-lg border border-accent/30 bg-accent/10 p-4 text-sm text-accent">
               Dev-код для входа:{" "}
               <span className="font-mono font-semibold">{DEV_OTP_CODE}</span>
@@ -69,7 +74,7 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
               <input
                 name="code"
                 inputMode="numeric"
-                placeholder="111111"
+                placeholder={devOtpEnabled ? DEV_OTP_CODE : "000000"}
                 className="h-12 rounded-md border border-border bg-background px-3 text-base outline-none transition-colors focus:border-accent"
                 required
               />

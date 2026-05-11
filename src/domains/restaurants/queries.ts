@@ -48,8 +48,8 @@ export async function getStorefrontRestaurants() {
 export async function getRestaurantMenu(slug: string) {
   const prisma = getPrisma();
 
-  const restaurant = await prisma.restaurant.findUnique({
-    where: { slug },
+  const restaurant = await prisma.restaurant.findFirst({
+    where: { slug, status: "active" },
     include: {
       translations: true,
       menuCategories: {

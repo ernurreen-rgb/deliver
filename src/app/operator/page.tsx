@@ -1,9 +1,12 @@
 import { SurfaceShell } from "@/components/layout/surface-shell";
+import { requireAnyRole } from "@/domains/auth/authorization";
 import { getOperatorOrders } from "@/domains/orders/queries";
 
 export const dynamic = "force-dynamic";
 
 export default async function OperatorPage() {
+  await requireAnyRole(["operator", "admin"]);
+
   const operatorQueue = await getOperatorOrders();
 
   return (

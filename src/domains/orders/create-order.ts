@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { getPrisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/domains/auth/session";
+import type { Prisma } from "@/generated/prisma/client";
 import {
   calculateDeliveryFee,
   calculateDistanceMeters,
@@ -14,6 +15,10 @@ type ParsedCartItem = {
   menuItemId: string;
   quantity: number;
 };
+
+const MAX_CART_PAYLOAD_LENGTH = 50_000;
+const MAX_CUSTOMER_COMMENT_LENGTH = 500;
+const MAX_PROMOCODE_LENGTH = 32;
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -52,7 +57,7 @@ function createPublicOrderNumber() {
   return `A-${Date.now().toString(36).toUpperCase()}`;
 }
 
-async function resolvePromocode(input: {
+async function resolvePromocode(tx: Prisma.TransactionClient, input: {
   code: string;
   userId: string;
   restaurantId: string;
@@ -63,15 +68,24 @@ async function resolvePromocode(input: {
     return null;
   }
 
-  const prisma = getPrisma();
   const now = new Date();
-  const promocode = await prisma.promocode.findUnique({
-    where: { code: input.code.toUpperCase() },
+
+  const lockedPromocodes = await tx.$queryRaw<{ id: string }[]>`
+    SELECT id
+    FROM promocodes
+    WHERE code = ${input.code.toUpperCase()}
+    FOR UPDATE
+  `;
+  const lockedPromocode = lockedPromocodes[0];
+
+  if (!lockedPromocode) {
+    return null;
+  }
+
+  const promocode = await tx.promocode.findUnique({
+    where: { id: lockedPromocode.id },
     include: {
       restaurants: true,
-      redemptions: {
-        where: { userId: input.userId },
-      },
     },
   });
 
@@ -95,13 +109,6 @@ async function resolvePromocode(input: {
   }
 
   if (
-    promocode.perUserUsageLimit !== null &&
-    promocode.redemptions.length >= promocode.perUserUsageLimit
-  ) {
-    return null;
-  }
-
-  if (
     promocode.restaurants.length > 0 &&
     !promocode.restaurants.some(
       (restaurant) => restaurant.restaurantId === input.restaurantId,
@@ -110,9 +117,24 @@ async function resolvePromocode(input: {
     return null;
   }
 
-  const totalRedemptions = await prisma.promocodeRedemption.count({
-    where: { promocodeId: promocode.id },
-  });
+  const [userRedemptions, totalRedemptions] = await Promise.all([
+    tx.promocodeRedemption.count({
+      where: {
+        promocodeId: promocode.id,
+        userId: input.userId,
+      },
+    }),
+    tx.promocodeRedemption.count({
+      where: { promocodeId: promocode.id },
+    }),
+  ]);
+
+  if (
+    promocode.perUserUsageLimit !== null &&
+    userRedemptions >= promocode.perUserUsageLimit
+  ) {
+    return null;
+  }
 
   if (
     promocode.totalUsageLimit !== null &&
@@ -150,7 +172,17 @@ export async function createOrderAction(formData: FormData) {
   const paymentMethod = readString(formData, "paymentMethod");
   const customerComment = readString(formData, "customerComment");
   const promocodeInput = readString(formData, "promocode").toUpperCase();
-  const cartItems = parseCartPayload(readString(formData, "cartPayload"));
+  const cartPayload = readString(formData, "cartPayload");
+
+  if (
+    customerComment.length > MAX_CUSTOMER_COMMENT_LENGTH ||
+    promocodeInput.length > MAX_PROMOCODE_LENGTH ||
+    cartPayload.length > MAX_CART_PAYLOAD_LENGTH
+  ) {
+    redirect("/checkout?error=input_too_long");
+  }
+
+  const cartItems = parseCartPayload(cartPayload);
 
   if (!addressId) {
     redirect("/checkout?error=address_required");
@@ -203,6 +235,10 @@ export async function createOrderAction(formData: FormData) {
 
   if (!restaurantId || !restaurant) {
     redirect("/checkout?error=cart_changed");
+  }
+
+  if (restaurant.status !== "active") {
+    redirect("/checkout?error=restaurant_unavailable");
   }
 
   if (menuItems.some((item) => item.restaurantId !== restaurantId)) {
@@ -277,25 +313,26 @@ export async function createOrderAction(formData: FormData) {
     : 0;
   const serviceFee = Math.min(rawServiceFee, serviceRule?.maxFee ?? rawServiceFee);
 
-  const promocode = await resolvePromocode({
-    code: promocodeInput,
-    userId: user.id,
-    restaurantId,
-    itemsSubtotal,
-    deliveryFee,
-  });
-  const discountTotal = promocode?.discountAmount ?? 0;
-  const customerTotal = itemsSubtotal + deliveryFee + serviceFee - discountTotal;
-  const restaurantCommission = Math.floor(
-    (itemsSubtotal * restaurant.defaultCommissionBps) / 10000,
-  );
-  const restaurantPayout = itemsSubtotal - restaurantCommission;
-  const courierEarning = deliveryFee;
-  const platformRevenue =
-    restaurantCommission + serviceFee + deliveryFee - courierEarning;
-  const publicNumber = createPublicOrderNumber();
+  const order = await prisma.$transaction(async (tx) => {
+    const promocode = await resolvePromocode(tx, {
+      code: promocodeInput,
+      userId: user.id,
+      restaurantId,
+      itemsSubtotal,
+      deliveryFee,
+    });
+    const discountTotal = promocode?.discountAmount ?? 0;
+    const customerTotal = itemsSubtotal + deliveryFee + serviceFee - discountTotal;
+    const restaurantCommission = Math.floor(
+      (itemsSubtotal * restaurant.defaultCommissionBps) / 10000,
+    );
+    const restaurantPayout = itemsSubtotal - restaurantCommission;
+    const courierEarning = deliveryFee;
+    const platformRevenue =
+      restaurantCommission + serviceFee + deliveryFee - courierEarning;
+    const publicNumber = createPublicOrderNumber();
 
-  const order = await prisma.order.create({
+    return tx.order.create({
     data: {
       publicNumber,
       customerId: user.id,
@@ -407,6 +444,7 @@ export async function createOrderAction(formData: FormData) {
           }
         : undefined,
     },
+    });
   });
 
   redirect(`/orders/${order.publicNumber}?created=1`);

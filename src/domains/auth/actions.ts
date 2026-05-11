@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { getPrisma } from "@/lib/db/prisma";
 import {
   DEV_OTP_CODE,
+  OTP_MAX_ATTEMPTS,
   OTP_TTL_MINUTES,
+  isDevOtpEnabled,
 } from "@/domains/auth/constants";
 import { safeCompareHash, sha256 } from "@/domains/auth/crypto";
 import { normalizePhone, isValidPhone } from "@/domains/auth/phone";
@@ -22,14 +24,33 @@ export async function requestOtpAction(formData: FormData) {
     redirect("/login?error=invalid_phone");
   }
 
-  await getPrisma().authVerificationCode.create({
-    data: {
-      phone,
-      codeHash: sha256(DEV_OTP_CODE),
-      purpose: "login",
-      expiresAt: new Date(Date.now() + OTP_TTL_MINUTES * 60 * 1000),
-    },
-  });
+  if (!isDevOtpEnabled()) {
+    redirect("/login?error=otp_provider_unavailable");
+  }
+
+  const prisma = getPrisma();
+  const now = new Date();
+
+  await prisma.$transaction([
+    prisma.authVerificationCode.updateMany({
+      where: {
+        phone,
+        purpose: "login",
+        consumedAt: null,
+      },
+      data: {
+        consumedAt: now,
+      },
+    }),
+    prisma.authVerificationCode.create({
+      data: {
+        phone,
+        codeHash: sha256(DEV_OTP_CODE),
+        purpose: "login",
+        expiresAt: new Date(now.getTime() + OTP_TTL_MINUTES * 60 * 1000),
+      },
+    }),
+  ]);
 
   redirect(`/login?phone=${encodeURIComponent(phone)}&sent=1`);
 }
@@ -60,15 +81,24 @@ export async function verifyOtpAction(formData: FormData) {
     redirect(`/login?phone=${encodeURIComponent(phone)}&error=expired_code`);
   }
 
+  if (challenge.attemptCount >= OTP_MAX_ATTEMPTS) {
+    redirect(`/login?phone=${encodeURIComponent(phone)}&error=too_many_attempts`);
+  }
+
   const isValidCode = safeCompareHash(sha256(code), challenge.codeHash);
 
   if (!isValidCode) {
+    const attemptCount = challenge.attemptCount + 1;
+
     await getPrisma().authVerificationCode.update({
       where: { id: challenge.id },
       data: { attemptCount: { increment: 1 } },
     });
 
-    redirect(`/login?phone=${encodeURIComponent(phone)}&sent=1&error=bad_code`);
+    const error =
+      attemptCount >= OTP_MAX_ATTEMPTS ? "too_many_attempts" : "bad_code";
+
+    redirect(`/login?phone=${encodeURIComponent(phone)}&sent=1&error=${error}`);
   }
 
   const user = await getPrisma().$transaction(async (tx) => {
@@ -110,6 +140,10 @@ export async function verifyOtpAction(formData: FormData) {
 
     return upsertedUser;
   });
+
+  if (user.status !== "active") {
+    redirect("/login?error=user_unavailable");
+  }
 
   await createSession(user.id);
 

@@ -1,17 +1,44 @@
 import Link from "next/link";
 import { appConfig, appRoutes } from "@/config/app";
+import { hasAnyRole } from "@/domains/auth/authorization";
+import { getCurrentUser } from "@/domains/auth/session";
 
-const navItems = [
+type NavItem = {
+  href: (typeof appRoutes)[keyof typeof appRoutes];
+  label: string;
+};
+
+const publicNavItems: NavItem[] = [
   { href: appRoutes.customer, label: "Клиент" },
-  { href: appRoutes.account, label: "Профиль" },
   { href: appRoutes.cart, label: "Корзина" },
-  { href: appRoutes.restaurant, label: "Ресторан" },
-  { href: appRoutes.courier, label: "Курьер" },
-  { href: appRoutes.operator, label: "Оператор" },
-  { href: appRoutes.admin, label: "Админ" },
 ];
 
-export function AppHeader() {
+export async function AppHeader() {
+  const user = await getCurrentUser();
+  const navItems = [...publicNavItems];
+
+  if (user) {
+    navItems.push({ href: appRoutes.account, label: "Профиль" });
+  } else {
+    navItems.push({ href: appRoutes.login, label: "Войти" });
+  }
+
+  if (hasAnyRole(user, ["restaurant_staff", "admin"])) {
+    navItems.push({ href: appRoutes.restaurant, label: "Ресторан" });
+  }
+
+  if (hasAnyRole(user, ["courier", "admin"])) {
+    navItems.push({ href: appRoutes.courier, label: "Курьер" });
+  }
+
+  if (hasAnyRole(user, ["operator", "admin"])) {
+    navItems.push({ href: appRoutes.operator, label: "Оператор" });
+  }
+
+  if (hasAnyRole(user, ["admin"])) {
+    navItems.push({ href: appRoutes.admin, label: "Админ" });
+  }
+
   return (
     <header className="border-b border-border bg-surface">
       <div className="mx-auto flex min-h-16 w-full max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">

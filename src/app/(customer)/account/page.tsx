@@ -3,29 +3,40 @@ import { InfoTile } from "@/components/shared/info-tile";
 import { SurfaceShell } from "@/components/layout/surface-shell";
 import { logoutAction } from "@/domains/auth/actions";
 import { getCurrentUser } from "@/domains/auth/session";
+import { getCustomerAccountOverview } from "@/domains/users/queries";
 
 export const dynamic = "force-dynamic";
+
+function LoginPrompt() {
+  return (
+    <SurfaceShell
+      title="Профиль клиента"
+      description="Войдите по номеру телефона, чтобы сохранять адреса и видеть историю заказов."
+    >
+      <Link
+        href="/login"
+        className="inline-flex rounded-md bg-accent px-4 py-3 text-sm font-medium text-accent-foreground"
+      >
+        Войти по телефону
+      </Link>
+    </SurfaceShell>
+  );
+}
 
 export default async function AccountPage() {
   const user = await getCurrentUser();
 
   if (!user) {
-    return (
-      <SurfaceShell
-        title="Профиль клиента"
-        description="Войдите по номеру телефона, чтобы сохранять адреса и видеть историю заказов."
-      >
-        <Link
-          href="/login"
-          className="inline-flex rounded-md bg-accent px-4 py-3 text-sm font-medium text-accent-foreground"
-        >
-          Войти по телефону
-        </Link>
-      </SurfaceShell>
-    );
+    return <LoginPrompt />;
   }
 
-  const roles = user.roles.map((role) => role.role).join(", ");
+  const account = await getCustomerAccountOverview(user.id);
+
+  if (!account) {
+    return <LoginPrompt />;
+  }
+
+  const roles = account.roles.map((role) => role.role).join(", ");
 
   return (
     <SurfaceShell
@@ -33,10 +44,10 @@ export default async function AccountPage() {
       description="Аккаунт клиента, сохраненные адреса и история заказов."
     >
       <div className="grid gap-4 md:grid-cols-4">
-        <InfoTile label="Телефон" value={user.phone} tone="accent" />
-        <InfoTile label="Адреса" value={String(user.addresses.length)} />
-        <InfoTile label="Заказы" value={String(user.orders.length)} />
-        <InfoTile label="Язык" value={user.preferences?.language ?? "ru"} />
+        <InfoTile label="Телефон" value={account.phone} tone="accent" />
+        <InfoTile label="Адреса" value={String(account._count.addresses)} />
+        <InfoTile label="Заказы" value={String(account._count.orders)} />
+        <InfoTile label="Язык" value={account.preferences?.language ?? "ru"} />
       </div>
 
       <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_320px]">
@@ -57,8 +68,8 @@ export default async function AccountPage() {
           </div>
 
           <div className="mt-5 grid gap-3">
-            {user.addresses.length > 0 ? (
-              user.addresses.slice(0, 3).map((address) => (
+            {account.addresses.length > 0 ? (
+              account.addresses.map((address) => (
                 <div
                   key={address.id}
                   className="rounded-md border border-border bg-background p-4"

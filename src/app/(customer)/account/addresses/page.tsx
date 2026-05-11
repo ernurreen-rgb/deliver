@@ -5,6 +5,7 @@ import {
   createAddressAction,
   deleteAddressAction,
 } from "@/domains/users/addresses";
+import { getCustomerAddresses } from "@/domains/users/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -16,11 +17,18 @@ type AddressesPageProps = {
   }>;
 };
 
+const errorMessages: Record<string, string> = {
+  address_required: "Заполните адресную строку.",
+  geocode_failed: "Не удалось определить адрес. Проверьте город и адрес.",
+  input_too_long: "Проверьте длину полей адреса.",
+};
+
 export default async function AddressesPage({
   searchParams,
 }: AddressesPageProps) {
   const user = await getCurrentUser();
   const params = await searchParams;
+  const errorMessage = params.error ? errorMessages[params.error] : null;
 
   if (!user) {
     return (
@@ -37,6 +45,8 @@ export default async function AddressesPage({
       </SurfaceShell>
     );
   }
+
+  const addresses = await getCustomerAddresses(user.id);
 
   return (
     <SurfaceShell
@@ -55,15 +65,9 @@ export default async function AddressesPage({
         </div>
       ) : null}
 
-      {params.error === "address_required" ? (
+      {errorMessage ? (
         <div className="mb-5 rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
-          Заполните адресную строку.
-        </div>
-      ) : null}
-
-      {params.error === "geocode_failed" ? (
-        <div className="mb-5 rounded-lg border border-warning/30 bg-warning/10 p-4 text-sm text-warning">
-          Не удалось определить адрес. Проверьте город и адрес.
+          {errorMessage}
         </div>
       ) : null}
 
@@ -71,8 +75,8 @@ export default async function AddressesPage({
         <section className="rounded-lg border border-border bg-surface p-5">
           <h2 className="text-lg font-semibold">Список адресов</h2>
           <div className="mt-5 grid gap-3">
-            {user.addresses.length > 0 ? (
-              user.addresses.map((address) => (
+            {addresses.length > 0 ? (
+              addresses.map((address) => (
                 <div
                   key={address.id}
                   className="rounded-lg border border-border bg-background p-4"
@@ -119,6 +123,7 @@ export default async function AddressesPage({
               <span className="font-medium">Название</span>
               <input
                 name="label"
+                maxLength={80}
                 placeholder="Дом, работа"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
@@ -127,6 +132,7 @@ export default async function AddressesPage({
               <span className="font-medium">Город</span>
               <input
                 name="city"
+                maxLength={80}
                 defaultValue="Алматы"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
@@ -135,6 +141,7 @@ export default async function AddressesPage({
               <span className="font-medium">Адрес</span>
               <input
                 name="addressLine"
+                maxLength={240}
                 placeholder="проспект Абая, 10"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
                 required
@@ -143,37 +150,44 @@ export default async function AddressesPage({
             <div className="grid grid-cols-2 gap-3">
               <input
                 name="street"
+                maxLength={160}
                 placeholder="Улица"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
               <input
                 name="house"
+                maxLength={32}
                 placeholder="Дом"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
               <input
                 name="apartment"
+                maxLength={32}
                 placeholder="Квартира"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
               <input
                 name="entrance"
+                maxLength={32}
                 placeholder="Подъезд"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
               <input
                 name="floor"
+                maxLength={32}
                 placeholder="Этаж"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
               <input
                 name="intercom"
+                maxLength={32}
                 placeholder="Домофон"
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
             </div>
             <textarea
               name="comment"
+              maxLength={500}
               placeholder="Комментарий к адресу"
               className="min-h-24 rounded-md border border-border bg-background px-3 py-2 outline-none focus:border-accent"
             />

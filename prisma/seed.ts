@@ -12,6 +12,14 @@ const prisma = new PrismaClient({
   adapter: new PrismaPg({ connectionString }),
 });
 
+const adminRoles = [
+  "customer",
+  "restaurant_staff",
+  "courier",
+  "operator",
+  "admin",
+] as const;
+
 async function main() {
   const admin = await prisma.user.upsert({
     where: { phone: "+77000000001" },
@@ -21,13 +29,31 @@ async function main() {
       phoneVerifiedAt: new Date(),
       name: "Администратор",
       roles: {
-        create: [{ role: "admin" }, { role: "operator" }],
+        create: adminRoles.map((role) => ({ role })),
       },
       preferences: {
         create: { language: "ru" },
       },
     },
   });
+
+  await Promise.all(
+    adminRoles.map((role) =>
+      prisma.userRoleAssignment.upsert({
+        where: {
+          userId_role: {
+            userId: admin.id,
+            role,
+          },
+        },
+        update: {},
+        create: {
+          userId: admin.id,
+          role,
+        },
+      }),
+    ),
+  );
 
   const customer = await prisma.user.upsert({
     where: { phone: "+77000000002" },

@@ -27,6 +27,7 @@ const dateFormatter = new Intl.DateTimeFormat("ru-KZ", {
 });
 
 const errorMessages: Record<string, string> = {
+  input_too_long: "Комментарий слишком длинный.",
   forbidden: "У вас нет доступа к этому ресторану.",
   invalid_status: "Статус заказа уже изменился. Обновите страницу.",
   order_not_found: "Заказ не найден.",
@@ -69,6 +70,7 @@ function OrderActions({ order }: { order: { id: string; status: string } }) {
             <span className="text-foreground/60">Комментарий кухни</span>
             <input
               name="restaurantComment"
+              maxLength={500}
               placeholder="Например: будет готово к выдаче быстро"
               className="h-10 rounded-md border border-border bg-surface px-3 outline-none focus:border-accent"
             />
@@ -85,6 +87,7 @@ function OrderActions({ order }: { order: { id: string; status: string } }) {
           <input name="orderId" type="hidden" value={order.id} />
           <input
             name="restaurantComment"
+            maxLength={500}
             placeholder="Причина отказа"
             className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-warning"
           />
@@ -115,6 +118,7 @@ function OrderActions({ order }: { order: { id: string; status: string } }) {
           <input name="orderId" type="hidden" value={order.id} />
           <input
             name="restaurantComment"
+            maxLength={500}
             placeholder="Причина отмены"
             className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-warning"
           />

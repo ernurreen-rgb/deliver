@@ -4,6 +4,7 @@ import { CheckoutSubmit } from "@/components/checkout/checkout-submit";
 import { SurfaceShell } from "@/components/layout/surface-shell";
 import { getCurrentUser } from "@/domains/auth/session";
 import { createOrderAction } from "@/domains/orders/create-order";
+import { getCustomerAddresses } from "@/domains/users/queries";
 
 export const dynamic = "force-dynamic";
 
@@ -19,10 +20,12 @@ const checkoutErrors: Record<string, string> = {
   cart_changed: "Корзина изменилась. Обновите страницу и проверьте блюда.",
   delivery_rule_missing: "Не настроен тариф доставки.",
   empty_cart: "Корзина пуста.",
+  input_too_long: "Проверьте длину комментария или промокода.",
   minimum_order: "Сумма заказа меньше минимума ресторана.",
   missing_coordinates: "Для адреса или ресторана не указаны координаты.",
   outside_radius: "Адрес находится вне радиуса доставки ресторана.",
   payment_unavailable: "Этот способ оплаты пока недоступен.",
+  restaurant_unavailable: "Ресторан сейчас недоступен для заказа.",
   single_restaurant_only: "В одном заказе могут быть блюда только одного ресторана.",
 };
 
@@ -46,6 +49,8 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
       </SurfaceShell>
     );
   }
+
+  const addresses = await getCustomerAddresses(user.id);
 
   return (
     <SurfaceShell
@@ -76,8 +81,8 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
           </div>
 
           <div className="mt-5 grid gap-3">
-            {user.addresses.length > 0 ? (
-              user.addresses.map((address, index) => (
+            {addresses.length > 0 ? (
+              addresses.map((address, index) => (
                 <label
                   key={address.id}
                   className="flex cursor-pointer gap-3 rounded-lg border border-border bg-background p-4 transition-colors hover:border-accent"
@@ -97,7 +102,11 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
                       {address.city}, {address.addressLine}
                     </span>
                     <span className="mt-2 block text-sm text-foreground/55">
-                      {[address.apartment && `кв. ${address.apartment}`, address.entrance && `подъезд ${address.entrance}`, address.floor && `этаж ${address.floor}`]
+                      {[
+                        address.apartment && `кв. ${address.apartment}`,
+                        address.entrance && `подъезд ${address.entrance}`,
+                        address.floor && `этаж ${address.floor}`,
+                      ]
                         .filter(Boolean)
                         .join(", ") || "Детали не указаны"}
                     </span>
@@ -124,6 +133,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
               <span className="font-medium">Комментарий к заказу</span>
               <textarea
                 name="customerComment"
+                maxLength={500}
                 placeholder="Например: позвонить за 5 минут"
                 className="min-h-24 rounded-md border border-border bg-background px-3 py-2 outline-none focus:border-accent"
               />
@@ -174,12 +184,13 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
               <span className="font-medium">Промокод</span>
               <input
                 name="promocode"
+                maxLength={32}
                 placeholder="START"
                 className="h-11 rounded-md border border-border bg-background px-3 uppercase outline-none focus:border-accent"
               />
             </label>
             <div className="mt-5">
-              <CheckoutSubmit hasAddress={user.addresses.length > 0} />
+              <CheckoutSubmit hasAddress={addresses.length > 0} />
             </div>
           </section>
         </aside>

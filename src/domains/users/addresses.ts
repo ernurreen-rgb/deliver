@@ -6,9 +6,35 @@ import { getCurrentUser } from "@/domains/auth/session";
 import { geocodeAddress } from "@/domains/geo/geocode";
 import { getPrisma } from "@/lib/db/prisma";
 
+const addressFieldLimits = {
+  label: 80,
+  city: 80,
+  addressLine: 240,
+  street: 160,
+  house: 32,
+  apartment: 32,
+  entrance: 32,
+  floor: 32,
+  intercom: 32,
+  comment: 500,
+} as const;
+
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
+}
+
+function readAddressString(
+  formData: FormData,
+  key: keyof typeof addressFieldLimits,
+) {
+  const value = readString(formData, key);
+
+  if (value.length > addressFieldLimits[key]) {
+    redirect("/account/addresses?error=input_too_long");
+  }
+
+  return value;
 }
 
 function nullable(value: string) {
@@ -22,15 +48,15 @@ export async function createAddressAction(formData: FormData) {
     redirect("/login");
   }
 
-  const addressLine = readString(formData, "addressLine");
+  const addressLine = readAddressString(formData, "addressLine");
 
   if (!addressLine) {
     redirect("/account/addresses?error=address_required");
   }
 
-  const city = readString(formData, "city") || "Алматы";
-  const street = nullable(readString(formData, "street"));
-  const house = nullable(readString(formData, "house"));
+  const city = readAddressString(formData, "city") || "Алматы";
+  const street = nullable(readAddressString(formData, "street"));
+  const house = nullable(readAddressString(formData, "house"));
   const coordinates = await geocodeAddress({
     city,
     addressLine,
@@ -45,16 +71,16 @@ export async function createAddressAction(formData: FormData) {
   await getPrisma().address.create({
     data: {
       userId: user.id,
-      label: nullable(readString(formData, "label")),
+      label: nullable(readAddressString(formData, "label")),
       city,
       addressLine,
       street,
       house,
-      apartment: nullable(readString(formData, "apartment")),
-      entrance: nullable(readString(formData, "entrance")),
-      floor: nullable(readString(formData, "floor")),
-      intercom: nullable(readString(formData, "intercom")),
-      comment: nullable(readString(formData, "comment")),
+      apartment: nullable(readAddressString(formData, "apartment")),
+      entrance: nullable(readAddressString(formData, "entrance")),
+      floor: nullable(readAddressString(formData, "floor")),
+      intercom: nullable(readAddressString(formData, "intercom")),
+      comment: nullable(readAddressString(formData, "comment")),
       latitude: coordinates.latitude,
       longitude: coordinates.longitude,
     },

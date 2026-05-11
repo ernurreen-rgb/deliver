@@ -9,7 +9,13 @@ import { getPrisma } from "@/lib/db/prisma";
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
-  return typeof value === "string" ? value.trim() : "";
+  const text = typeof value === "string" ? value.trim() : "";
+
+  if (text.length > 500) {
+    redirect("/restaurant?error=input_too_long");
+  }
+
+  return text;
 }
 
 function readPreparationMinutes(formData: FormData) {
