@@ -367,9 +367,21 @@ export async function getOperatorOrders() {
   await expireCourierOffers();
 
   const orders = await prisma.order.findMany({
+    where: {
+      status: {
+        notIn: ["delivered", "cancelled"],
+      },
+    },
     orderBy: { createdAt: "desc" },
-    take: 20,
+    take: 50,
     include: {
+      customer: {
+        select: {
+          name: true,
+          phone: true,
+        },
+      },
+      deliveryAddress: true,
       financials: true,
       restaurant: {
         include: {
@@ -436,14 +448,77 @@ export async function getOperatorOrders() {
     }
 
     return {
+      id: order.id,
+      deliveryId: order.delivery?.id ?? null,
       number: order.publicNumber,
       restaurant: restaurantRu?.name ?? order.restaurant.slug,
-      status: getOrderStatusLabel(order.status),
+      customer: order.customer.name ?? order.customer.phone,
+      customerPhone: order.customer.phone,
+      address: formatOrderAddress(order.deliveryAddress),
+      status: order.status,
+      statusLabel: getOrderStatusLabel(order.status),
+      deliveryStatus: order.delivery?.status ?? null,
+      deliveryStatusLabel: order.delivery
+        ? getDeliveryStatusLabel(order.delivery.status)
+        : "Нет доставки",
       total: order.financials ? formatKzt(order.financials.customerTotal) : "-",
       dispatchState,
+      latestOffer: latestOffer
+        ? {
+            status: latestOffer.status,
+            courier:
+              latestOffer.courier.profile?.fullName ?? "Курьер",
+            expiresAt: latestOffer.expiresAt,
+          }
+        : null,
+      canRetryDispatch: Boolean(order.delivery && needsCourier && !pendingOffer),
+      canAssignCourier: Boolean(order.delivery && needsCourier),
+      canUnassignCourier: Boolean(
+        order.delivery?.courierId && order.delivery.status === "assigned",
+      ),
+      canCancel: order.status !== "cancelled" && order.status !== "delivered",
       courier: order.delivery?.courier?.profile?.fullName ?? "Не назначен",
     };
   });
+}
+
+export async function getOperatorAvailableCouriers() {
+  const prisma = getPrisma();
+  const activeDeliveryStatuses = ["assigned", "picked_up", "delivering"] as const;
+
+  const couriers = await prisma.courier.findMany({
+    where: {
+      status: "available",
+      deliveries: {
+        none: {
+          status: { in: [...activeDeliveryStatuses] },
+        },
+      },
+      availability: {
+        is: {
+          status: "available",
+          latitude: { not: null },
+          longitude: { not: null },
+        },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+    include: {
+      profile: true,
+      user: {
+        select: {
+          phone: true,
+        },
+      },
+    },
+  });
+
+  return couriers.map((courier) => ({
+    id: courier.id,
+    name: courier.profile?.fullName ?? courier.user.phone,
+    phone: courier.profile?.phone ?? courier.user.phone,
+    transportType: courier.profile?.transportType ?? null,
+  }));
 }
 
 export async function getCourierDashboard(userId: string) {

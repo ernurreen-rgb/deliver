@@ -426,13 +426,18 @@ export async function acceptCourierOfferForUser(input: {
         );
       }
 
+      const nextOrderStatus =
+        offer.delivery.order.status === "ready_for_pickup"
+          ? "ready_for_pickup"
+          : "courier_assigned";
+
       const orderUpdate = await tx.order.updateMany({
         where: {
           id: offer.delivery.orderId,
           status: { in: [...dispatchableOrderStatuses] },
         },
         data: {
-          status: "courier_assigned",
+          status: nextOrderStatus,
         },
       });
 
@@ -447,7 +452,7 @@ export async function acceptCourierOfferForUser(input: {
         data: {
           orderId: offer.delivery.orderId,
           fromStatus: offer.delivery.order.status,
-          toStatus: "courier_assigned",
+          toStatus: nextOrderStatus,
           changedByUserId: input.userId,
           comment: "Courier accepted delivery offer.",
         },
