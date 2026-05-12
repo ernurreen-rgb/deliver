@@ -1,6 +1,10 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { formatKzt } from "@/lib/money/format";
 import { expireCourierOffers } from "@/domains/delivery/dispatch";
+import {
+  buildOperatorAttention,
+  minutesSince,
+} from "@/domains/orders/operator-attention";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
 export function getOrderStatusLabel(status: string) {
@@ -364,6 +368,7 @@ export async function getRestaurantDashboard(userId: string) {
 
 export async function getOperatorOrders() {
   const prisma = getPrisma();
+  const now = new Date();
   await expireCourierOffers();
 
   const orders = await prisma.order.findMany({
@@ -383,6 +388,10 @@ export async function getOperatorOrders() {
       },
       deliveryAddress: true,
       financials: true,
+      statusHistory: {
+        orderBy: { createdAt: "desc" },
+        take: 1,
+      },
       restaurant: {
         include: {
           translations: true,
@@ -422,6 +431,20 @@ export async function getOperatorOrders() {
     const needsCourier =
       order.delivery?.status === "pending_assignment" &&
       ["accepted", "preparing", "ready_for_pickup"].includes(order.status);
+    const statusChangedAt = order.statusHistory[0]?.createdAt ?? order.updatedAt;
+    const deliveryChangedAt = order.delivery?.updatedAt ?? null;
+    const attention = buildOperatorAttention({
+      orderStatus: order.status,
+      deliveryStatus: order.delivery?.status ?? null,
+      hasDelivery: Boolean(order.delivery),
+      hasCourier: Boolean(order.delivery?.courierId),
+      hasPendingOffer: Boolean(pendingOffer),
+      hasRestaurantCoordinates: Boolean(
+        order.restaurant.latitude && order.restaurant.longitude,
+      ),
+      statusAgeMinutes: minutesSince(statusChangedAt, now),
+      deliveryAgeMinutes: minutesSince(deliveryChangedAt, now),
+    });
     let dispatchState = "Не назначен";
 
     if (assignedCourierName) {
@@ -451,6 +474,7 @@ export async function getOperatorOrders() {
       id: order.id,
       deliveryId: order.delivery?.id ?? null,
       number: order.publicNumber,
+      createdAt: order.createdAt,
       restaurant: restaurantRu?.name ?? order.restaurant.slug,
       customer: order.customer.name ?? order.customer.phone,
       customerPhone: order.customer.phone,
@@ -463,6 +487,7 @@ export async function getOperatorOrders() {
         : "Нет доставки",
       total: order.financials ? formatKzt(order.financials.customerTotal) : "-",
       dispatchState,
+      attention,
       latestOffer: latestOffer
         ? {
             status: latestOffer.status,
@@ -479,7 +504,12 @@ export async function getOperatorOrders() {
       canCancel: order.status !== "cancelled" && order.status !== "delivered",
       courier: order.delivery?.courier?.profile?.fullName ?? "Не назначен",
     };
-  });
+  }).sort(
+    (first, second) =>
+      first.attention.sortWeight - second.attention.sortWeight ||
+      (second.attention.isProblem ? 1 : 0) - (first.attention.isProblem ? 1 : 0) ||
+      second.createdAt.getTime() - first.createdAt.getTime(),
+  );
 }
 
 export async function getOperatorAvailableCouriers() {

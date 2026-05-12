@@ -64,6 +64,29 @@ function statusClassName(status: string) {
   return "bg-surface-muted text-foreground/70";
 }
 
+function attentionClassName(level: OperatorOrder["attention"]["level"]) {
+  if (level === "critical" || level === "warning") {
+    return "border-warning/35 bg-warning/10 text-warning";
+  }
+
+  if (level === "watch") {
+    return "border-accent/30 bg-accent/10 text-accent";
+  }
+
+  return "border-border bg-surface-muted text-foreground/70";
+}
+
+function attentionLabel(level: OperatorOrder["attention"]["level"]) {
+  const labels: Record<OperatorOrder["attention"]["level"], string> = {
+    critical: "Срочно",
+    warning: "Внимание",
+    watch: "Автоматика",
+    normal: "Штатно",
+  };
+
+  return labels[level];
+}
+
 function OperatorControls({
   availableCouriers,
   order,
@@ -158,6 +181,83 @@ function OperatorControls({
   );
 }
 
+function OperatorOrderCard({
+  availableCouriers,
+  order,
+}: {
+  availableCouriers: AvailableCourier[];
+  order: OperatorOrder;
+}) {
+  return (
+    <article
+      className={`grid gap-4 rounded-lg border bg-background p-4 ${
+        order.attention.isProblem ? "border-warning/35" : "border-border"
+      }`}
+    >
+      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="font-semibold">{order.number}</span>
+            <span
+              className={`rounded-full px-3 py-1 text-xs font-medium ${statusClassName(order.status)}`}
+            >
+              {order.statusLabel}
+            </span>
+            {order.deliveryStatusLabel ? (
+              <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-medium text-foreground/70">
+                {order.deliveryStatusLabel}
+              </span>
+            ) : null}
+            <span
+              className={`rounded-full border px-3 py-1 text-xs font-medium ${attentionClassName(order.attention.level)}`}
+            >
+              {attentionLabel(order.attention.level)} · {order.attention.ageLabel}
+            </span>
+          </div>
+
+          <div className="mt-3 rounded-md border border-border bg-surface-muted px-3 py-2">
+            <div className="text-sm font-medium text-foreground">
+              {order.attention.title}
+            </div>
+            <div className="mt-1 text-sm text-foreground/60">
+              {order.attention.detail}
+            </div>
+            <div className="mt-2 text-sm font-medium text-foreground/75">
+              Оператору: {order.attention.action}
+            </div>
+          </div>
+
+          <div className="mt-3 text-sm text-foreground/65">
+            {order.restaurant} · {order.customer} · {order.customerPhone}
+          </div>
+          <div className="mt-1 text-sm text-foreground/65">{order.address}</div>
+          <div className="mt-2 text-sm font-medium text-foreground/75">
+            {order.dispatchState}
+          </div>
+          {order.latestOffer ? (
+            <div className="mt-1 text-sm text-foreground/55">
+              Последнее предложение: {order.latestOffer.courier} ·{" "}
+              {order.latestOffer.status}
+              {order.latestOffer.status === "pending"
+                ? ` до ${dateFormatter.format(order.latestOffer.expiresAt)}`
+                : ""}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="lg:text-right">
+          <div className="text-lg font-semibold">{order.total}</div>
+          <div className="mt-1 text-sm text-foreground/55">
+            Курьер: {order.courier}
+          </div>
+        </div>
+      </div>
+
+      <OperatorControls availableCouriers={availableCouriers} order={order} />
+    </article>
+  );
+}
+
 export default async function OperatorPage({ searchParams }: OperatorPageProps) {
   await requireAnyRole(["operator", "admin"]);
 
@@ -173,6 +273,10 @@ export default async function OperatorPage({ searchParams }: OperatorPageProps) 
   const waitingCourier = operatorQueue.filter(
     (order) => order.latestOffer?.status === "pending",
   ).length;
+  const problemOrders = operatorQueue.filter((order) => order.attention.isProblem);
+  const monitoringOrders = operatorQueue.filter(
+    (order) => !order.attention.isProblem,
+  );
   const assignedDeliveries = operatorQueue.filter((order) =>
     ["assigned", "picked_up", "delivering"].includes(order.deliveryStatus ?? ""),
   ).length;
@@ -194,17 +298,17 @@ export default async function OperatorPage({ searchParams }: OperatorPageProps) 
       ) : null}
 
       <div className="grid gap-4 md:grid-cols-4">
-        <InfoTile label="Активные" value={String(operatorQueue.length)} />
         <InfoTile
-          label="Без курьера"
-          value={String(needsCourier)}
-          tone={needsCourier > 0 ? "warning" : "default"}
+          label="Требуют внимания"
+          value={String(problemOrders.length)}
+          tone={problemOrders.length > 0 ? "warning" : "default"}
         />
         <InfoTile
-          label="Ждут ответ"
+          label="Автопоиск работает"
           value={String(waitingCourier)}
           tone={waitingCourier > 0 ? "accent" : "default"}
         />
+        <InfoTile label="Активные" value={String(operatorQueue.length)} />
         <InfoTile
           label="Курьеры онлайн"
           value={String(availableCouriers.length)}
@@ -212,76 +316,58 @@ export default async function OperatorPage({ searchParams }: OperatorPageProps) 
         />
       </div>
 
-      <section className="mt-6 rounded-lg border border-border bg-surface p-5">
+      <section className="mt-6 rounded-lg border border-warning/30 bg-warning/5 p-5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold">Очередь заказов</h2>
+            <h2 className="text-lg font-semibold">Центр проблем</h2>
             <p className="mt-1 text-sm text-foreground/60">
-              Активных доставок: {assignedDeliveries}. Ручное снятие доступно до
-              момента, когда курьер забрал заказ.
+              Сюда попадают заказы, где автоматике уже нужна помощь оператора.
+              Без курьера: {needsCourier}.
             </p>
           </div>
         </div>
 
         <div className="mt-5 grid gap-4">
-          {operatorQueue.length > 0 ? (
-            operatorQueue.map((order) => (
-              <article
+          {problemOrders.length > 0 ? (
+            problemOrders.map((order) => (
+              <OperatorOrderCard
                 key={order.id}
-                className="grid gap-4 rounded-lg border border-border bg-background p-4"
-              >
-                <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-3">
-                      <span className="font-semibold">{order.number}</span>
-                      <span
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${statusClassName(order.status)}`}
-                      >
-                        {order.statusLabel}
-                      </span>
-                      {order.deliveryStatusLabel ? (
-                        <span className="rounded-full bg-surface-muted px-3 py-1 text-xs font-medium text-foreground/70">
-                          {order.deliveryStatusLabel}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div className="mt-2 text-sm text-foreground/65">
-                      {order.restaurant} · {order.customer} ·{" "}
-                      {order.customerPhone}
-                    </div>
-                    <div className="mt-1 text-sm text-foreground/65">
-                      {order.address}
-                    </div>
-                    <div className="mt-2 text-sm font-medium text-foreground/75">
-                      {order.dispatchState}
-                    </div>
-                    {order.latestOffer ? (
-                      <div className="mt-1 text-sm text-foreground/55">
-                        Последнее предложение: {order.latestOffer.courier} ·{" "}
-                        {order.latestOffer.status}
-                        {order.latestOffer.status === "pending"
-                          ? ` до ${dateFormatter.format(order.latestOffer.expiresAt)}`
-                          : ""}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="lg:text-right">
-                    <div className="text-lg font-semibold">{order.total}</div>
-                    <div className="mt-1 text-sm text-foreground/55">
-                      Курьер: {order.courier}
-                    </div>
-                  </div>
-                </div>
-
-                <OperatorControls
-                  availableCouriers={availableCouriers}
-                  order={order}
-                />
-              </article>
+                availableCouriers={availableCouriers}
+                order={order}
+              />
             ))
           ) : (
             <div className="rounded-lg border border-dashed border-border p-6 text-sm text-foreground/60">
-              Активных заказов сейчас нет.
+              Сейчас нет заказов, где требуется вмешательство. Автоматика
+              справляется штатно.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="mt-6 rounded-lg border border-border bg-surface p-5">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold">Автоматика и мониторинг</h2>
+            <p className="mt-1 text-sm text-foreground/60">
+              Активных доставок: {assignedDeliveries}. Эти заказы идут штатно
+              или ждут автоматический ответ курьера.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-4">
+          {monitoringOrders.length > 0 ? (
+            monitoringOrders.map((order) => (
+              <OperatorOrderCard
+                key={order.id}
+                availableCouriers={availableCouriers}
+                order={order}
+              />
+            ))
+          ) : (
+            <div className="rounded-lg border border-dashed border-border p-6 text-sm text-foreground/60">
+              Активных заказов для мониторинга сейчас нет.
             </div>
           )}
         </div>
