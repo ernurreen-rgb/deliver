@@ -5,6 +5,7 @@ import {
   buildOperatorAttention,
   minutesSince,
 } from "@/domains/orders/operator-attention";
+import { buildOrderTimeline } from "@/domains/orders/timeline";
 import type { OrderStatus } from "@/generated/prisma/enums";
 
 export function getOrderStatusLabel(status: string) {
@@ -173,6 +174,15 @@ export async function getCustomerOrderByPublicNumber(input: {
   const statusHistory = await prisma.orderStatusHistory.findMany({
     where: { orderId: order.id },
     orderBy: { createdAt: "asc" },
+    include: {
+      changedBy: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+        },
+      },
+    },
   });
 
   const offers = delivery
@@ -182,6 +192,24 @@ export async function getCustomerOrderByPublicNumber(input: {
         take: 1,
       })
     : [];
+  const auditLogs = await prisma.auditLog.findMany({
+    where: {
+      OR: [
+        { entityType: "order", entityId: order.id },
+        ...(delivery ? [{ entityType: "delivery", entityId: delivery.id }] : []),
+      ],
+    },
+    orderBy: { createdAt: "asc" },
+    include: {
+      actor: {
+        select: {
+          id: true,
+          name: true,
+          phone: true,
+        },
+      },
+    },
+  });
   const deliveryCourier = delivery?.courierId
     ? await prisma.courier.findUnique({
         where: { id: delivery.courierId },
@@ -244,6 +272,19 @@ export async function getCustomerOrderByPublicNumber(input: {
   const restaurantRu = restaurantTranslations.find(
     (translation) => translation.language === "ru",
   );
+  const pendingOffer = offers.find((offer) => offer.status === "pending") ?? null;
+  const timeline = buildOrderTimeline({
+    order: {
+      status: order.status,
+    },
+    delivery: {
+      status: delivery?.status ?? null,
+      hasCourier: Boolean(delivery?.courierId),
+      hasPendingOffer: Boolean(pendingOffer),
+    },
+    statusHistory,
+    auditLogs,
+  });
 
   return {
     ...order,
@@ -276,6 +317,7 @@ export async function getCustomerOrderByPublicNumber(input: {
       : null,
     restaurantName: restaurantRu?.name ?? restaurant?.slug ?? order.publicNumber,
     statusHistory,
+    timeline,
     statusLabel: getOrderStatusLabel(order.status),
     paymentMethodLabel: getPaymentMethodLabel(order.paymentMethod),
     paymentStatusLabel: getPaymentStatusLabel(order.paymentStatus),
@@ -375,12 +417,65 @@ export async function getRestaurantDashboard(userId: string) {
         },
         deliveryAddress: true,
         financials: true,
+        statusHistory: {
+          orderBy: { createdAt: "asc" },
+          include: {
+            changedBy: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+              },
+            },
+          },
+        },
         items: {
           orderBy: { createdAt: "asc" },
         },
       },
     }),
   ]);
+
+  const activeOrderIds = activeOrders.map((order) => order.id);
+  const activeDeliveryIds = activeOrders.flatMap((order) =>
+    order.delivery ? [order.delivery.id] : [],
+  );
+  const auditLogs =
+    activeOrderIds.length > 0
+      ? await prisma.auditLog.findMany({
+          where: {
+            OR: [
+              { entityType: "order", entityId: { in: activeOrderIds } },
+              ...(activeDeliveryIds.length > 0
+                ? [
+                    {
+                      entityType: "delivery",
+                      entityId: { in: activeDeliveryIds },
+                    },
+                  ]
+                : []),
+            ],
+          },
+          orderBy: { createdAt: "asc" },
+          include: {
+            actor: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+              },
+            },
+          },
+        })
+      : [];
+  const auditLogsByEntityId = new Map<string, typeof auditLogs>();
+
+  for (const log of auditLogs) {
+    auditLogsByEntityId.set(log.entityId, [
+      ...(auditLogsByEntityId.get(log.entityId) ?? []),
+      log,
+    ]);
+  }
 
   return {
     restaurant: {
@@ -418,6 +513,23 @@ export async function getRestaurantDashboard(userId: string) {
             order.deliveryAddress.floor && `этаж ${order.deliveryAddress.floor}`,
           ].filter(Boolean)
         : [];
+      const timeline = buildOrderTimeline({
+        order: {
+          status: order.status,
+        },
+        delivery: {
+          status: order.delivery?.status ?? null,
+          hasCourier: Boolean(order.delivery?.courierId),
+          hasPendingOffer: Boolean(pendingOffer),
+        },
+        statusHistory: order.statusHistory,
+        auditLogs: [
+          ...(auditLogsByEntityId.get(order.id) ?? []),
+          ...(order.delivery
+            ? (auditLogsByEntityId.get(order.delivery.id) ?? [])
+            : []),
+        ],
+      });
 
       return {
         id: order.id,
@@ -451,6 +563,7 @@ export async function getRestaurantDashboard(userId: string) {
         customerTotal: order.financials
           ? formatKzt(order.financials.customerTotal)
           : "-",
+        timeline,
       };
     }),
   };
@@ -479,8 +592,16 @@ export async function getOperatorOrders() {
       deliveryAddress: true,
       financials: true,
       statusHistory: {
-        orderBy: { createdAt: "desc" },
-        take: 1,
+        orderBy: { createdAt: "asc" },
+        include: {
+          changedBy: {
+            select: {
+              id: true,
+              name: true,
+              phone: true,
+            },
+          },
+        },
       },
       restaurant: {
         include: {
@@ -510,6 +631,47 @@ export async function getOperatorOrders() {
     },
   });
 
+  const orderIds = orders.map((order) => order.id);
+  const deliveryIds = orders.flatMap((order) =>
+    order.delivery ? [order.delivery.id] : [],
+  );
+  const auditLogs =
+    orderIds.length > 0
+      ? await prisma.auditLog.findMany({
+          where: {
+            OR: [
+              { entityType: "order", entityId: { in: orderIds } },
+              ...(deliveryIds.length > 0
+                ? [
+                    {
+                      entityType: "delivery",
+                      entityId: { in: deliveryIds },
+                    },
+                  ]
+                : []),
+            ],
+          },
+          orderBy: { createdAt: "asc" },
+          include: {
+            actor: {
+              select: {
+                id: true,
+                name: true,
+                phone: true,
+              },
+            },
+          },
+        })
+      : [];
+  const auditLogsByEntityId = new Map<string, typeof auditLogs>();
+
+  for (const log of auditLogs) {
+    auditLogsByEntityId.set(log.entityId, [
+      ...(auditLogsByEntityId.get(log.entityId) ?? []),
+      log,
+    ]);
+  }
+
   return orders.map((order) => {
     const restaurantRu = order.restaurant.translations.find(
       (translation) => translation.language === "ru",
@@ -526,7 +688,9 @@ export async function getOperatorOrders() {
     const needsCourier =
       order.delivery?.status === "pending_assignment" &&
       ["accepted", "preparing", "ready_for_pickup"].includes(order.status);
-    const statusChangedAt = order.statusHistory[0]?.createdAt ?? order.updatedAt;
+    const latestStatusHistory =
+      order.statusHistory[order.statusHistory.length - 1] ?? null;
+    const statusChangedAt = latestStatusHistory?.createdAt ?? order.updatedAt;
     const deliveryChangedAt = order.delivery?.updatedAt ?? null;
     const attention = buildOperatorAttention({
       orderStatus: order.status,
@@ -566,6 +730,21 @@ export async function getOperatorOrders() {
     } else if (needsDelivery) {
       dispatchState = "Доставка не создана";
     }
+    const timeline = buildOrderTimeline({
+      order: {
+        status: order.status,
+      },
+      delivery: {
+        status: order.delivery?.status ?? null,
+        hasCourier: Boolean(order.delivery?.courierId),
+        hasPendingOffer: Boolean(pendingOffer),
+      },
+      statusHistory: order.statusHistory,
+      auditLogs: [
+        ...(auditLogsByEntityId.get(order.id) ?? []),
+        ...(order.delivery ? (auditLogsByEntityId.get(order.delivery.id) ?? []) : []),
+      ],
+    });
 
     return {
       id: order.id,
@@ -601,6 +780,7 @@ export async function getOperatorOrders() {
       ),
       canCancel: order.status !== "cancelled" && order.status !== "delivered",
       courier: order.delivery?.courier?.profile?.fullName ?? "Не назначен",
+      timeline,
     };
   }).sort(
     (first, second) =>

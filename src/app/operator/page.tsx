@@ -1,5 +1,6 @@
 import { InfoTile } from "@/components/shared/info-tile";
 import { SurfaceShell } from "@/components/layout/surface-shell";
+import { OrderTimelinePanel } from "@/components/orders/order-timeline";
 import { requireAnyRole } from "@/domains/auth/authorization";
 import {
   assignCourierManuallyAction,
@@ -266,6 +267,12 @@ function OperatorOrderCard({
           </div>
         </div>
       </div>
+
+      <OrderTimelinePanel
+        compact
+        className="border-t border-border pt-4"
+        timeline={order.timeline}
+      />
 
       <OperatorControls availableCouriers={availableCouriers} order={order} />
     </article>

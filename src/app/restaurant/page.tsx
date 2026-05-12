@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { InfoTile } from "@/components/shared/info-tile";
 import { SurfaceShell } from "@/components/layout/surface-shell";
+import { OrderTimelinePanel } from "@/components/orders/order-timeline";
 import { getCurrentUser } from "@/domains/auth/session";
 import {
   acceptRestaurantOrderAction,
@@ -314,6 +315,12 @@ export default async function RestaurantDashboardPage({
                     Комментарий ресторана: {order.restaurantComment}
                   </div>
                 ) : null}
+
+                <OrderTimelinePanel
+                  compact
+                  className="border-t border-border pt-4"
+                  timeline={order.timeline}
+                />
 
                 <OrderActions order={order} />
               </article>

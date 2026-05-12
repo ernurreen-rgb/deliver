@@ -2,11 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClearCartEffect } from "@/components/cart/clear-cart-effect";
 import { SurfaceShell } from "@/components/layout/surface-shell";
+import { OrderTimelinePanel } from "@/components/orders/order-timeline";
 import { getCurrentUser } from "@/domains/auth/session";
-import {
-  getCustomerOrderByPublicNumber,
-  getOrderStatusLabel,
-} from "@/domains/orders/queries";
+import { getCustomerOrderByPublicNumber } from "@/domains/orders/queries";
 import { formatKzt } from "@/lib/money/format";
 
 export const dynamic = "force-dynamic";
@@ -183,20 +181,8 @@ export default async function OrderDetailPage({
           </section>
 
           <section className="rounded-lg border border-border bg-surface p-5">
-            <h2 className="text-lg font-semibold">История статусов</h2>
-            <div className="mt-4 grid gap-3">
-              {order.statusHistory.map((event) => (
-                <div key={event.id} className="border-t border-border pt-3 first:border-t-0 first:pt-0">
-                  <div className="font-medium">
-                    {getOrderStatusLabel(event.toStatus)}
-                  </div>
-                  <div className="mt-1 text-sm text-foreground/55">
-                    {dateFormatter.format(event.createdAt)}
-                    {event.comment ? ` · ${event.comment}` : ""}
-                  </div>
-                </div>
-              ))}
-            </div>
+            <h2 className="text-lg font-semibold">История заказа</h2>
+            <OrderTimelinePanel className="mt-4" timeline={order.timeline} />
           </section>
         </div>
 
