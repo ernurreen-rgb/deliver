@@ -4,6 +4,7 @@ import { requireAnyRole } from "@/domains/auth/authorization";
 import {
   assignCourierManuallyAction,
   cancelOrderByOperatorAction,
+  createDeliveryForOrderAction,
   retryCourierDispatchAction,
   unassignCourierAction,
 } from "@/domains/delivery/operator-actions";
@@ -39,6 +40,7 @@ const errorMessages: Record<string, string> = {
   courier_not_found: "Курьер не найден.",
   courier_required: "Выберите курьера.",
   courier_unavailable: "Курьер уже занят или недоступен.",
+  delivery_already_exists: "Доставка для заказа уже создана.",
   delivery_not_found: "Доставка не найдена.",
   delivery_required: "Не передана доставка.",
   input_too_long: "Текст слишком длинный.",
@@ -99,6 +101,18 @@ function OperatorControls({
   return (
     <div className="grid gap-3 border-t border-border pt-4">
       <div className="flex flex-wrap gap-3">
+        {order.canCreateDelivery ? (
+          <form action={createDeliveryForOrderAction}>
+            <input name="orderId" type="hidden" value={order.id} />
+            <button
+              type="submit"
+              className="h-10 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground"
+            >
+              Создать доставку
+            </button>
+          </form>
+        ) : null}
+
         {order.canRetryDispatch && order.deliveryId ? (
           <form action={retryCourierDispatchAction}>
             <input name="deliveryId" type="hidden" value={order.deliveryId} />
@@ -268,7 +282,8 @@ export default async function OperatorPage({ searchParams }: OperatorPageProps) 
   ]);
   const errorMessage = params.error ? errorMessages[params.error] : null;
   const needsCourier = operatorQueue.filter(
-    (order) => order.canAssignCourier && !order.latestOffer,
+    (order) =>
+      (order.canCreateDelivery || order.canAssignCourier) && !order.latestOffer,
   ).length;
   const waitingCourier = operatorQueue.filter(
     (order) => order.latestOffer?.status === "pending",

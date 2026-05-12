@@ -518,6 +518,11 @@ export async function getOperatorOrders() {
     const pendingOffer =
       latestOffer?.status === "pending" ? latestOffer : null;
     const assignedCourierName = order.delivery?.courier?.profile?.fullName;
+    const needsDelivery =
+      !order.delivery &&
+      ["accepted", "preparing", "ready_for_pickup", "courier_assigned"].includes(
+        order.status,
+      );
     const needsCourier =
       order.delivery?.status === "pending_assignment" &&
       ["accepted", "preparing", "ready_for_pickup"].includes(order.status);
@@ -558,6 +563,8 @@ export async function getOperatorOrders() {
       }`;
     } else if (needsCourier) {
       dispatchState = "Нет доступных курьеров";
+    } else if (needsDelivery) {
+      dispatchState = "Доставка не создана";
     }
 
     return {
@@ -586,6 +593,7 @@ export async function getOperatorOrders() {
             expiresAt: latestOffer.expiresAt,
           }
         : null,
+      canCreateDelivery: needsDelivery,
       canRetryDispatch: Boolean(order.delivery && needsCourier && !pendingOffer),
       canAssignCourier: Boolean(order.delivery && needsCourier),
       canUnassignCourier: Boolean(
