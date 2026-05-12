@@ -8,6 +8,7 @@ import {
   goOfflineCourierAction,
   goOnlineCourierAction,
   markDeliveryPickedUpAction,
+  releaseAssignedDeliveryAction,
   rejectCourierOfferAction,
   startDeliveryAction,
 } from "@/domains/delivery/courier-actions";
@@ -46,6 +47,7 @@ const errorMessages: Record<string, string> = {
   courier_unavailable: "Курьер уже занят или недоступен. Предложение передано следующему курьеру.",
   invalid_delivery_status: "Статус доставки уже изменился. Обновите страницу.",
   invalid_courier_status: "Текущий статус курьера не позволяет выполнить действие.",
+  input_too_long: "Текст слишком длинный.",
   financial_record_missing: "Не хватает финансовых данных заказа. Передайте заказ оператору.",
   payment_amount_mismatch: "Сумма оплаты не совпадает с итогом заказа. Передайте заказ оператору.",
   payment_record_missing: "Не найдена активная оплата заказа. Передайте заказ оператору.",
@@ -112,25 +114,54 @@ function AvailabilityControl({
   );
 }
 
+function ReleaseAssignedDeliveryForm({ deliveryId }: { deliveryId: string }) {
+  return (
+    <form
+      action={releaseAssignedDeliveryAction}
+      className="grid gap-3 sm:grid-cols-[1fr_auto]"
+    >
+      <input name="deliveryId" type="hidden" value={deliveryId} />
+      <input
+        name="reason"
+        maxLength={240}
+        placeholder="Причина отказа"
+        className="h-10 rounded-md border border-border bg-surface px-3 text-sm outline-none focus:border-warning"
+      />
+      <button
+        type="submit"
+        className="h-10 rounded-md border border-warning/35 px-4 text-sm font-medium text-warning transition-colors hover:bg-warning/10"
+      >
+        Не могу выполнить
+      </button>
+    </form>
+  );
+}
+
 function DeliveryAction({ delivery }: DeliveryActionProps) {
   if (delivery.status === "assigned" && delivery.orderStatus === "ready_for_pickup") {
     return (
-      <form action={markDeliveryPickedUpAction}>
-        <input name="deliveryId" type="hidden" value={delivery.id} />
-        <button
-          type="submit"
-          className="h-10 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground"
-        >
-          Забрал заказ
-        </button>
-      </form>
+      <div className="grid w-full gap-3 lg:grid-cols-[auto_1fr]">
+        <form action={markDeliveryPickedUpAction}>
+          <input name="deliveryId" type="hidden" value={delivery.id} />
+          <button
+            type="submit"
+            className="h-10 rounded-md bg-accent px-4 text-sm font-medium text-accent-foreground"
+          >
+            Забрал заказ
+          </button>
+        </form>
+        <ReleaseAssignedDeliveryForm deliveryId={delivery.id} />
+      </div>
     );
   }
 
   if (delivery.status === "assigned") {
     return (
-      <div className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground/65">
-        Ждем готовность ресторана
+      <div className="grid w-full gap-3 lg:grid-cols-[auto_1fr]">
+        <div className="rounded-md border border-border bg-surface px-3 py-2 text-sm text-foreground/65">
+          Ждем готовность ресторана
+        </div>
+        <ReleaseAssignedDeliveryForm deliveryId={delivery.id} />
       </div>
     );
   }

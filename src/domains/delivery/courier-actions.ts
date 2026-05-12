@@ -9,13 +9,23 @@ import {
 } from "@/domains/delivery/availability";
 import {
   acceptCourierOfferForUser,
+  dispatchNextCourierOffer,
   rejectCourierOfferForUser,
 } from "@/domains/delivery/dispatch";
-import { transitionCourierDeliveryForUser } from "@/domains/delivery/lifecycle";
+import {
+  releaseAssignedDeliveryForUser,
+  transitionCourierDeliveryForUser,
+} from "@/domains/delivery/lifecycle";
 
-function readString(formData: FormData, key: string) {
+function readString(formData: FormData, key: string, maxLength = 120) {
   const value = formData.get(key);
-  return typeof value === "string" ? value.trim() : "";
+  const text = typeof value === "string" ? value.trim() : "";
+
+  if (text.length > maxLength) {
+    redirect("/courier?error=input_too_long");
+  }
+
+  return text;
 }
 
 async function requireCurrentUser() {
@@ -206,6 +216,34 @@ export async function completeDeliveryAction(formData: FormData) {
   if (result.status === "updated") {
     redirect(`/courier?updated=${result.publicNumber}`);
   }
+
+  redirect(`/courier?error=${result.status}`);
+}
+
+export async function releaseAssignedDeliveryAction(formData: FormData) {
+  const deliveryId = readString(formData, "deliveryId");
+  const reason = readString(formData, "reason", 240);
+  const user = await requireCurrentUser();
+
+  if (!deliveryId) {
+    redirect("/courier?error=delivery_required");
+  }
+
+  const result = await releaseAssignedDeliveryForUser({
+    deliveryId,
+    userId: user.id,
+    reason,
+  });
+
+  if (result.status === "updated") {
+    await dispatchNextCourierOffer(result.deliveryId);
+    revalidateCourierDeliveryFlows(result.publicNumber);
+    redirect(`/courier?updated=released_${result.publicNumber}`);
+  }
+
+  revalidateCourierDeliveryFlows(
+    "publicNumber" in result ? result.publicNumber : undefined,
+  );
 
   redirect(`/courier?error=${result.status}`);
 }
