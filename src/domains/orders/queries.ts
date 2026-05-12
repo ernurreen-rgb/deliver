@@ -133,59 +133,149 @@ export async function getCustomerOrderByPublicNumber(input: {
       customerId: input.customerId,
       publicNumber: input.publicNumber,
     },
-    include: {
-      delivery: {
-        include: {
-          courier: {
-            include: {
-              profile: true,
-            },
-          },
-          offers: {
-            orderBy: { offeredAt: "desc" },
-            take: 1,
-            include: {
-              courier: {
-                include: {
-                  profile: true,
-                },
-              },
-            },
-          },
-        },
-      },
-      deliveryAddress: true,
-      deliveryFeeCalculation: true,
-      financials: true,
-      items: true,
-      payments: true,
-      promoRedemptions: {
-        include: {
-          promocode: true,
-        },
-      },
-      restaurant: {
-        include: {
-          translations: true,
-        },
-      },
-      statusHistory: {
-        orderBy: { createdAt: "asc" },
-      },
-    },
   });
 
   if (!order) {
     return null;
   }
 
-  const restaurantRu = order.restaurant.translations.find(
+  const delivery = await prisma.delivery.findUnique({
+    where: { orderId: order.id },
+  });
+  const deliveryAddress = await prisma.orderDeliveryAddress.findUnique({
+    where: { orderId: order.id },
+  });
+  const deliveryFeeCalculation =
+    await prisma.deliveryFeeCalculation.findUnique({
+      where: { orderId: order.id },
+    });
+  const financials = await prisma.orderFinancial.findUnique({
+    where: { orderId: order.id },
+  });
+  const items = await prisma.orderItem.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: "asc" },
+  });
+  const payments = await prisma.payment.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: "asc" },
+  });
+  const promoRedemptions = await prisma.promocodeRedemption.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: "asc" },
+  });
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: order.restaurantId },
+  });
+  const restaurantTranslations = await prisma.restaurantTranslation.findMany({
+    where: { restaurantId: order.restaurantId },
+  });
+  const statusHistory = await prisma.orderStatusHistory.findMany({
+    where: { orderId: order.id },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const offers = delivery
+    ? await prisma.courierOffer.findMany({
+        where: { deliveryId: delivery.id },
+        orderBy: { offeredAt: "desc" },
+        take: 1,
+      })
+    : [];
+  const deliveryCourier = delivery?.courierId
+    ? await prisma.courier.findUnique({
+        where: { id: delivery.courierId },
+      })
+    : null;
+
+  const courierIds = Array.from(
+    new Set(
+      [deliveryCourier?.id, ...offers.map((offer) => offer.courierId)].filter(
+        (id): id is string => Boolean(id),
+      ),
+    ),
+  );
+
+  const offerCouriers =
+    courierIds.length > 0
+      ? await prisma.courier.findMany({
+          where: { id: { in: courierIds } },
+        })
+      : [];
+  const courierProfiles =
+    courierIds.length > 0
+      ? await prisma.courierProfile.findMany({
+          where: { courierId: { in: courierIds } },
+        })
+      : [];
+  const promocodes =
+    promoRedemptions.length > 0
+      ? await prisma.promocode.findMany({
+          where: {
+            id: {
+              in: Array.from(
+                new Set(
+                  promoRedemptions.map((redemption) => redemption.promocodeId),
+                ),
+              ),
+            },
+          },
+        })
+      : [];
+
+  const profileByCourierId = new Map(
+    courierProfiles.map((profile) => [profile.courierId, profile]),
+  );
+  const courierById = new Map(
+    [...offerCouriers, ...(deliveryCourier ? [deliveryCourier] : [])].map(
+      (courier) => [
+        courier.id,
+        {
+          ...courier,
+          profile: profileByCourierId.get(courier.id) ?? null,
+        },
+      ],
+    ),
+  );
+  const promocodeById = new Map(
+    promocodes.map((promocode) => [promocode.id, promocode]),
+  );
+
+  const restaurantRu = restaurantTranslations.find(
     (translation) => translation.language === "ru",
   );
 
   return {
     ...order,
-    restaurantName: restaurantRu?.name ?? order.restaurant.slug,
+    delivery: delivery
+      ? {
+          ...delivery,
+          courier: delivery.courierId
+            ? courierById.get(delivery.courierId) ?? null
+            : null,
+          offers: offers.map((offer) => ({
+            ...offer,
+            courier: courierById.get(offer.courierId) ?? null,
+          })),
+        }
+      : null,
+    deliveryAddress,
+    deliveryFeeCalculation,
+    financials,
+    items,
+    payments,
+    promoRedemptions: promoRedemptions.flatMap((redemption) => {
+      const promocode = promocodeById.get(redemption.promocodeId);
+      return promocode ? [{ ...redemption, promocode }] : [];
+    }),
+    restaurant: restaurant
+      ? {
+          ...restaurant,
+          translations: restaurantTranslations,
+        }
+      : null,
+    restaurantName: restaurantRu?.name ?? restaurant?.slug ?? order.publicNumber,
+    statusHistory,
     statusLabel: getOrderStatusLabel(order.status),
     paymentMethodLabel: getPaymentMethodLabel(order.paymentMethod),
     paymentStatusLabel: getPaymentStatusLabel(order.paymentStatus),
