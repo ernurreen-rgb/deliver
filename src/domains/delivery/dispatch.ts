@@ -1,4 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
+import { writeAuditLog } from "@/domains/audit/log";
 import { calculateDistanceMeters, toNumber } from "@/domains/delivery/pricing";
 import { getPrisma } from "@/lib/db/prisma";
 
@@ -459,6 +460,22 @@ export async function acceptCourierOfferForUser(input: {
         },
       });
 
+      await writeAuditLog({
+        tx,
+        actorUserId: input.userId,
+        entityType: "delivery",
+        entityId: offer.deliveryId,
+        action: "courier_offer_accepted_v1",
+        metadata: {
+          publicNumber: offer.delivery.order.publicNumber,
+          orderId: offer.delivery.orderId,
+          courierId: courier.id,
+          offerId: offer.id,
+          fromOrderStatus: offer.delivery.order.status,
+          toOrderStatus: nextOrderStatus,
+        },
+      });
+
       await tx.courierOffer.updateMany({
         where: {
           deliveryId: offer.deliveryId,
@@ -623,45 +640,81 @@ export async function rejectCourierOfferForUser(input: {
     return { status: "courier_not_found" as const };
   }
 
-  const offer = await prisma.courierOffer.findFirst({
-    where: {
-      id: input.offerId,
-      courierId: courier.id,
-    },
-    select: {
-      deliveryId: true,
-      expiresAt: true,
-      status: true,
-    },
+  const result = await prisma.$transaction(async (tx) => {
+    const offer = await tx.courierOffer.findFirst({
+      where: {
+        id: input.offerId,
+        courierId: courier.id,
+      },
+      include: {
+        delivery: {
+          include: {
+            order: {
+              select: {
+                id: true,
+                publicNumber: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!offer) {
+      return { status: "offer_not_found" as const };
+    }
+
+    if (offer.status !== "pending") {
+      return { status: "offer_unavailable" as const };
+    }
+
+    const nextStatus = offer.expiresAt <= now ? "expired" : "rejected";
+
+    const update = await tx.courierOffer.updateMany({
+      where: {
+        id: input.offerId,
+        courierId: courier.id,
+        status: "pending",
+      },
+      data: {
+        status: nextStatus,
+        respondedAt: now,
+      },
+    });
+
+    if (update.count !== 1) {
+      return { status: "offer_unavailable" as const };
+    }
+
+    await writeAuditLog({
+      tx,
+      actorUserId: input.userId,
+      entityType: "delivery",
+      entityId: offer.deliveryId,
+      action:
+        nextStatus === "rejected"
+          ? "courier_offer_rejected_v1"
+          : "courier_offer_expired_v1",
+      metadata: {
+        publicNumber: offer.delivery.order.publicNumber,
+        orderId: offer.delivery.order.id,
+        courierId: courier.id,
+        offerId: offer.id,
+        offerStatus: nextStatus,
+      },
+    });
+
+    return {
+      status: nextStatus as "expired" | "rejected",
+      deliveryId: offer.deliveryId,
+    };
   });
 
-  if (!offer) {
-    return { status: "offer_not_found" as const };
+  if (result.status === "rejected" || result.status === "expired") {
+    await dispatchNextCourierOffer(result.deliveryId, now);
   }
 
-  if (offer.status !== "pending") {
-    return { status: "offer_unavailable" as const };
-  }
-
-  const nextStatus = offer.expiresAt <= now ? "expired" : "rejected";
-
-  const update = await prisma.courierOffer.updateMany({
-    where: {
-      id: input.offerId,
-      courierId: courier.id,
-      status: "pending",
-    },
-    data: {
-      status: nextStatus,
-      respondedAt: now,
-    },
-  });
-
-  if (update.count !== 1) {
-    return { status: "offer_unavailable" as const };
-  }
-
-  await dispatchNextCourierOffer(offer.deliveryId, now);
-
-  return { status: nextStatus as "expired" | "rejected" };
+  return result.status === "rejected" || result.status === "expired"
+    ? { status: result.status }
+    : result;
 }

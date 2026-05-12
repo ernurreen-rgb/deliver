@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import type { PaymentProvider, PaymentStatus } from "@/generated/prisma/enums";
+import { writeAuditLog } from "@/domains/audit/log";
 
 type CashSettlementInput = {
   customerTotal: number;
@@ -208,21 +209,20 @@ export async function settleDeliveredCashOrder(input: {
     },
   });
 
-  await input.tx.auditLog.create({
-    data: {
-      actorUserId: input.actorUserId,
-      entityType: "order",
-      entityId: input.order.id,
-      action: "order_delivered_financially_closed_v1",
-      metadata: {
-        publicNumber: input.order.publicNumber,
-        paymentId: payment.id,
-        paymentMethod: input.order.paymentMethod,
-        customerTotal: input.order.financials.customerTotal,
-        restaurantBalanceDelta: settlement.restaurantBalanceDelta,
-        courierBalanceDelta: settlement.courierBalanceDelta,
-        paidAt: input.paidAt.toISOString(),
-      },
+  await writeAuditLog({
+    tx: input.tx,
+    actorUserId: input.actorUserId,
+    entityType: "order",
+    entityId: input.order.id,
+    action: "finance_closed_v1",
+    metadata: {
+      publicNumber: input.order.publicNumber,
+      paymentId: payment.id,
+      paymentMethod: input.order.paymentMethod,
+      customerTotal: input.order.financials.customerTotal,
+      restaurantBalanceDelta: settlement.restaurantBalanceDelta,
+      courierBalanceDelta: settlement.courierBalanceDelta,
+      paidAt: input.paidAt.toISOString(),
     },
   });
 }

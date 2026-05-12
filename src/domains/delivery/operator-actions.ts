@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import type { OrderStatus } from "@/generated/prisma/enums";
 import { requireAnyRole } from "@/domains/auth/authorization";
+import { writeAuditLog } from "@/domains/audit/log";
 import { dispatchNextCourierOffer } from "@/domains/delivery/dispatch";
 import { getPrisma } from "@/lib/db/prisma";
 
@@ -203,6 +204,20 @@ async function createDeliveryForOrder(input: {
               order.status === nextOrderStatus
                 ? "Operator created missing delivery."
                 : "Operator recreated missing delivery and returned order to dispatch.",
+          },
+        });
+
+        await writeAuditLog({
+          tx,
+          actorUserId: input.operatorUserId,
+          entityType: "delivery",
+          entityId: delivery.id,
+          action: "operator_created_delivery_v1",
+          metadata: {
+            publicNumber: order.publicNumber,
+            orderId: order.id,
+            fromOrderStatus: order.status,
+            toOrderStatus: nextOrderStatus,
           },
         });
 
@@ -424,6 +439,21 @@ async function assignCourierManually(input: {
         },
       });
 
+      await writeAuditLog({
+        tx,
+        actorUserId: input.operatorUserId,
+        entityType: "delivery",
+        entityId: delivery.id,
+        action: "operator_assigned_courier_v1",
+        metadata: {
+          publicNumber: delivery.order.publicNumber,
+          orderId: delivery.orderId,
+          courierId: courier.id,
+          fromOrderStatus: delivery.order.status,
+          toOrderStatus: nextOrderStatus,
+        },
+      });
+
       return {
         status: "updated" as const,
         publicNumber: delivery.order.publicNumber,
@@ -560,6 +590,21 @@ async function unassignCourier(input: {
           },
         });
 
+        await writeAuditLog({
+          tx,
+          actorUserId: input.operatorUserId,
+          entityType: "delivery",
+          entityId: delivery.id,
+          action: "operator_unassigned_courier_v1",
+          metadata: {
+            publicNumber: delivery.order.publicNumber,
+            orderId: delivery.orderId,
+            courierId: delivery.courierId,
+            fromOrderStatus: delivery.order.status,
+            toOrderStatus: nextOrderStatus,
+          },
+        });
+
         return {
           status: "updated" as const,
           publicNumber: delivery.order.publicNumber,
@@ -682,6 +727,22 @@ async function cancelOrderByOperator(input: {
         },
       });
 
+      await writeAuditLog({
+        tx,
+        actorUserId: input.operatorUserId,
+        entityType: "order",
+        entityId: order.id,
+        action: "operator_cancelled_order_v1",
+        metadata: {
+          publicNumber: order.publicNumber,
+          fromOrderStatus: order.status,
+          toOrderStatus: "cancelled",
+          reason: input.reason,
+          deliveryId: order.delivery?.id ?? null,
+          courierId: order.delivery?.courierId ?? null,
+        },
+      });
+
       return {
         status: "updated" as const,
         publicNumber: order.publicNumber,
@@ -721,7 +782,7 @@ export async function createDeliveryForOrderAction(formData: FormData) {
 }
 
 export async function retryCourierDispatchAction(formData: FormData) {
-  await requireAnyRole(["operator", "admin"]);
+  const user = await requireAnyRole(["operator", "admin"]);
 
   const deliveryId = readString(formData, "deliveryId");
 
@@ -733,6 +794,19 @@ export async function retryCourierDispatchAction(formData: FormData) {
   revalidateOperatorFlows();
 
   if (result.status === "offer_created" || result.status === "active_offer_exists") {
+    await writeAuditLog({
+      tx: getPrisma(),
+      actorUserId: user.id,
+      entityType: "delivery",
+      entityId: deliveryId,
+      action: "operator_restarted_dispatch_v1",
+      metadata: {
+        result: result.status,
+        offerId: result.offerId,
+        courierId: result.courierId,
+      },
+    });
+
     redirect("/operator?updated=dispatch_started");
   }
 

@@ -1,5 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import type { DeliveryStatus, OrderStatus } from "@/generated/prisma/enums";
+import { writeAuditLog } from "@/domains/audit/log";
 import {
   FinancialSettlementError,
   type FinancialSettlementErrorStatus,
@@ -59,6 +60,16 @@ export function isReleasableAssignedOrderStatus(
 
 export function getOrderStatusAfterCourierRelease(status: OrderStatus) {
   return status === "courier_assigned" ? "accepted" : status;
+}
+
+function getCourierDeliveryAuditAction(status: DeliveryStatus) {
+  const actions: Partial<Record<DeliveryStatus, string>> = {
+    picked_up: "courier_picked_up_order_v1",
+    delivering: "courier_started_delivery_v1",
+    delivered: "order_delivered_v1",
+  };
+
+  return actions[status] ?? "courier_delivery_status_changed_v1";
 }
 
 export async function transitionCourierDeliveryForUser(
@@ -146,6 +157,25 @@ export async function transitionCourierDeliveryForUser(
           toStatus: input.orderToStatus,
           changedByUserId: input.userId,
           comment: input.comment,
+        },
+      });
+
+      await writeAuditLog({
+        tx,
+        actorUserId: input.userId,
+        entityType: "delivery",
+        entityId: delivery.id,
+        action: getCourierDeliveryAuditAction(input.deliveryToStatus),
+        metadata: {
+          publicNumber: delivery.order.publicNumber,
+          orderId: delivery.orderId,
+          courierId: courier.id,
+          fromDeliveryStatus: input.deliveryFromStatus,
+          toDeliveryStatus: input.deliveryToStatus,
+          fromOrderStatus: input.orderFromStatus,
+          toOrderStatus: input.orderToStatus,
+          settleFinances: input.settleFinances ?? false,
+          releaseCourier: input.releaseCourier ?? false,
         },
       });
 
@@ -303,6 +333,22 @@ export async function releaseAssignedDeliveryForUser(input: {
           comment: reason
             ? `Courier released assigned delivery. Reason: ${reason}`
             : "Courier released assigned delivery.",
+        },
+      });
+
+      await writeAuditLog({
+        tx,
+        actorUserId: input.userId,
+        entityType: "delivery",
+        entityId: delivery.id,
+        action: "courier_released_delivery_v1",
+        metadata: {
+          publicNumber: delivery.order.publicNumber,
+          orderId: delivery.orderId,
+          courierId: courier.id,
+          fromOrderStatus: delivery.order.status,
+          toOrderStatus: nextOrderStatus,
+          reason: reason ?? null,
         },
       });
 

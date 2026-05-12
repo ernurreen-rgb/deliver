@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/domains/auth/session";
+import { writeAuditLog } from "@/domains/audit/log";
 import { dispatchNextCourierOffer } from "@/domains/delivery/dispatch";
 import type { OrderStatus } from "@/generated/prisma/enums";
 import { getPrisma } from "@/lib/db/prisma";
@@ -26,6 +27,17 @@ function readPreparationMinutes(formData: FormData) {
   }
 
   return Math.min(Math.max(rawValue, 5), 180);
+}
+
+function getRestaurantOrderAuditAction(status: OrderStatus) {
+  const actions: Partial<Record<OrderStatus, string>> = {
+    accepted: "restaurant_order_accepted_v1",
+    cancelled: "restaurant_order_cancelled_v1",
+    preparing: "restaurant_started_preparing_v1",
+    ready_for_pickup: "restaurant_marked_ready_for_pickup_v1",
+  };
+
+  return actions[status] ?? "restaurant_order_status_changed_v1";
 }
 
 async function requireRestaurantOrder(orderId: string) {
@@ -154,6 +166,22 @@ async function transitionRestaurantOrder(input: {
         toStatus: input.nextStatus,
         changedByUserId: user.id,
         comment: input.comment,
+      },
+    });
+
+    await writeAuditLog({
+      tx,
+      actorUserId: user.id,
+      entityType: "order",
+      entityId: order.id,
+      action: getRestaurantOrderAuditAction(input.nextStatus),
+      metadata: {
+        publicNumber: order.publicNumber,
+        restaurantId: order.restaurantId,
+        fromStatus: order.status,
+        toStatus: input.nextStatus,
+        comment: input.comment,
+        dispatchCourier: input.dispatchCourier ?? false,
       },
     });
 
