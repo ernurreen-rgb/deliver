@@ -1,6 +1,8 @@
 import Link from "next/link";
+import { AddressPicker } from "@/components/geo/address-picker";
 import { SurfaceShell } from "@/components/layout/surface-shell";
 import { getCurrentUser } from "@/domains/auth/session";
+import { getTwoGisMapKey } from "@/domains/geo";
 import {
   createAddressAction,
   deleteAddressAction,
@@ -18,7 +20,8 @@ type AddressesPageProps = {
 };
 
 const errorMessages: Record<string, string> = {
-  address_required: "Заполните адресную строку.",
+  address_required:
+    "Выберите адрес из подсказок или точку на карте в пределах Алматы.",
   geocode_failed: "Не удалось определить адрес. Проверьте город и адрес.",
   input_too_long: "Проверьте длину полей адреса.",
 };
@@ -47,6 +50,7 @@ export default async function AddressesPage({
   }
 
   const addresses = await getCustomerAddresses(user.id);
+  const mapApiKey = getTwoGisMapKey();
 
   return (
     <SurfaceShell
@@ -128,25 +132,7 @@ export default async function AddressesPage({
                 className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
               />
             </label>
-            <label className="grid gap-2 text-sm">
-              <span className="font-medium">Город</span>
-              <input
-                name="city"
-                maxLength={80}
-                defaultValue="Алматы"
-                className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
-              />
-            </label>
-            <label className="grid gap-2 text-sm">
-              <span className="font-medium">Адрес</span>
-              <input
-                name="addressLine"
-                maxLength={240}
-                placeholder="проспект Абая, 10"
-                className="h-11 rounded-md border border-border bg-background px-3 outline-none focus:border-accent"
-                required
-              />
-            </label>
+            <AddressPicker mapApiKey={mapApiKey} />
             <div className="grid grid-cols-2 gap-3">
               <input
                 name="street"

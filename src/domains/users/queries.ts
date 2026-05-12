@@ -29,7 +29,10 @@ export async function getCustomerAccountOverview(userId: string) {
         select: {
           id: true,
           label: true,
+          city: true,
           addressLine: true,
+          latitude: true,
+          longitude: true,
         },
       },
     },
@@ -48,6 +51,12 @@ export async function getCustomerAddresses(userId: string) {
       apartment: true,
       entrance: true,
       floor: true,
+      latitude: true,
+      longitude: true,
+      geoProvider: true,
+      geoProviderPlaceId: true,
+      geoSource: true,
+      geocodedAt: true,
     },
   });
 }

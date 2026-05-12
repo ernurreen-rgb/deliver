@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { getCurrentUser } from "@/domains/auth/session";
-import { geocodeAddress } from "@/domains/geo/geocode";
+import { parseSubmittedGeoAddress } from "@/domains/geo";
 import { getPrisma } from "@/lib/db/prisma";
 
 const addressFieldLimits = {
@@ -49,31 +49,28 @@ export async function createAddressAction(formData: FormData) {
   }
 
   const addressLine = readAddressString(formData, "addressLine");
+  const geoAddress = parseSubmittedGeoAddress({
+    city: readAddressString(formData, "city"),
+    addressLine,
+    latitude: readString(formData, "latitude"),
+    longitude: readString(formData, "longitude"),
+    geoProvider: readString(formData, "geoProvider"),
+    geoProviderPlaceId: readString(formData, "geoProviderPlaceId"),
+    geoSource: readString(formData, "geoSource"),
+  });
 
-  if (!addressLine) {
+  if (!addressLine || !geoAddress) {
     redirect("/account/addresses?error=address_required");
   }
 
-  const city = readAddressString(formData, "city") || "Алматы";
   const street = nullable(readAddressString(formData, "street"));
   const house = nullable(readAddressString(formData, "house"));
-  const coordinates = await geocodeAddress({
-    city,
-    addressLine,
-    street,
-    house,
-  });
-
-  if (!coordinates) {
-    redirect("/account/addresses?error=geocode_failed");
-  }
-
   await getPrisma().address.create({
     data: {
       userId: user.id,
       label: nullable(readAddressString(formData, "label")),
-      city,
-      addressLine,
+      city: geoAddress.city,
+      addressLine: geoAddress.addressLine,
       street,
       house,
       apartment: nullable(readAddressString(formData, "apartment")),
@@ -81,8 +78,12 @@ export async function createAddressAction(formData: FormData) {
       floor: nullable(readAddressString(formData, "floor")),
       intercom: nullable(readAddressString(formData, "intercom")),
       comment: nullable(readAddressString(formData, "comment")),
-      latitude: coordinates.latitude,
-      longitude: coordinates.longitude,
+      latitude: geoAddress.latitude,
+      longitude: geoAddress.longitude,
+      geoProvider: geoAddress.geoProvider,
+      geoProviderPlaceId: geoAddress.geoProviderPlaceId,
+      geoSource: geoAddress.geoSource,
+      geocodedAt: geoAddress.geocodedAt,
     },
   });
 

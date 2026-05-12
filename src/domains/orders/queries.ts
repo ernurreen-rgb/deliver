@@ -484,41 +484,42 @@ export async function getOperatorOrders() {
 
 export async function getOperatorAvailableCouriers() {
   const prisma = getPrisma();
-  const activeDeliveryStatuses = ["assigned", "picked_up", "delivering"] as const;
 
-  const couriers = await prisma.courier.findMany({
-    where: {
-      status: "available",
-      deliveries: {
-        none: {
-          status: { in: [...activeDeliveryStatuses] },
-        },
-      },
-      availability: {
-        is: {
-          status: "available",
-          latitude: { not: null },
-          longitude: { not: null },
-        },
-      },
-    },
-    orderBy: { createdAt: "asc" },
-    include: {
-      profile: true,
-      user: {
-        select: {
-          phone: true,
-        },
-      },
-    },
-  });
+  type AvailableCourierRow = {
+    id: string;
+    name: string;
+    phone: string;
+    transportType: string | null;
+  };
 
-  return couriers.map((courier) => ({
-    id: courier.id,
-    name: courier.profile?.fullName ?? courier.user.phone,
-    phone: courier.profile?.phone ?? courier.user.phone,
-    transportType: courier.profile?.transportType ?? null,
-  }));
+  // Keep this flat and static: the current pg adapter misbinds relation-heavy
+  // Prisma reads for this dashboard query in development.
+  return prisma.$queryRaw<AvailableCourierRow[]>`
+    SELECT
+      c.id,
+      COALESCE(cp."fullName", u.phone, 'Курьер') AS name,
+      COALESCE(cp.phone, u.phone, 'Без телефона') AS phone,
+      cp."transportType" AS "transportType"
+    FROM couriers c
+    JOIN users u
+      ON u.id = c."userId"
+     AND u.status = 'active'
+    JOIN courier_availability ca
+      ON ca."courierId" = c.id
+     AND ca.status = 'available'
+     AND ca.latitude IS NOT NULL
+     AND ca.longitude IS NOT NULL
+    LEFT JOIN courier_profiles cp
+      ON cp."courierId" = c.id
+    WHERE c.status = 'available'
+      AND NOT EXISTS (
+        SELECT 1
+        FROM deliveries d
+        WHERE d."courierId" = c.id
+          AND d.status IN ('assigned', 'picked_up', 'delivering')
+      )
+    ORDER BY c."createdAt" ASC
+  `;
 }
 
 export async function getCourierDashboard(userId: string) {

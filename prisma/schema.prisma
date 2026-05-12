@@ -265,6 +265,10 @@ model Address {
   comment     String?
   latitude    Decimal? @db.Decimal(9, 6)
   longitude   Decimal? @db.Decimal(9, 6)
+  geoProvider String?
+  geoProviderPlaceId String?
+  geoSource   String?
+  geocodedAt  DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -282,6 +286,10 @@ model Restaurant {
   addressLine              String
   latitude                 Decimal?                  @db.Decimal(9, 6)
   longitude                Decimal?                  @db.Decimal(9, 6)
+  geoProvider              String?
+  geoProviderPlaceId       String?
+  geoSource                String?
+  geocodedAt               DateTime?
   deliveryRadiusMeters     Int?
   minimumOrderAmount       Int                       @default(0)
   defaultCommissionBps     Int                       @default(0)
