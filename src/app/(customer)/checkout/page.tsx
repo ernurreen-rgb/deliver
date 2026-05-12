@@ -24,6 +24,7 @@ const checkoutErrors: Record<string, string> = {
   minimum_order: "Сумма заказа меньше минимума ресторана.",
   missing_coordinates: "Для адреса или ресторана не указаны координаты.",
   outside_radius: "Адрес находится вне радиуса доставки ресторана.",
+  order_number_collision: "Не удалось создать номер заказа. Попробуйте еще раз.",
   payment_unavailable: "Этот способ оплаты пока недоступен.",
   restaurant_unavailable: "Ресторан сейчас недоступен для заказа.",
   single_restaurant_only: "В одном заказе могут быть блюда только одного ресторана.",

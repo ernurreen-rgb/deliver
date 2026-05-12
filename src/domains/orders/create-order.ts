@@ -1,9 +1,10 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getPrisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/domains/auth/session";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import {
   calculateDeliveryFee,
   calculateDistanceMeters,
@@ -19,6 +20,7 @@ type ParsedCartItem = {
 const MAX_CART_PAYLOAD_LENGTH = 50_000;
 const MAX_CUSTOMER_COMMENT_LENGTH = 500;
 const MAX_PROMOCODE_LENGTH = 32;
+const PUBLIC_ORDER_NUMBER_RETRY_COUNT = 3;
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -54,7 +56,24 @@ function parseCartPayload(payload: string): ParsedCartItem[] {
 }
 
 function createPublicOrderNumber() {
-  return `A-${Date.now().toString(36).toUpperCase()}`;
+  const timestamp = Date.now().toString(36).toUpperCase();
+  const suffix = randomBytes(3).toString("hex").toUpperCase();
+
+  return `A-${timestamp}-${suffix}`;
+}
+
+function isPublicOrderNumberCollision(error: unknown) {
+  if (
+    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
+    error.code !== "P2002"
+  ) {
+    return false;
+  }
+
+  const target = error.meta?.target;
+  return Array.isArray(target)
+    ? target.includes("publicNumber")
+    : String(target ?? "").includes("publicNumber");
 }
 
 async function resolvePromocode(tx: Prisma.TransactionClient, input: {
@@ -70,7 +89,7 @@ async function resolvePromocode(tx: Prisma.TransactionClient, input: {
 
   const now = new Date();
 
-  const lockedPromocodes = await tx.$queryRaw<{ id: string }[]>`
+  const lockedPromocodes = await tx.$queryRaw<{ id: string; }[]>`
     SELECT id
     FROM promocodes
     WHERE code = ${input.code.toUpperCase()}
@@ -309,143 +328,156 @@ export async function createOrderAction(formData: FormData) {
 
   const rawServiceFee = serviceRule
     ? serviceRule.fixedFee +
-      Math.floor((itemsSubtotal * serviceRule.percentBps) / 10000)
+    Math.floor((itemsSubtotal * serviceRule.percentBps) / 10000)
     : 0;
   const serviceFee = Math.min(rawServiceFee, serviceRule?.maxFee ?? rawServiceFee);
 
-  const order = await prisma.$transaction(async (tx) => {
-    const promocode = await resolvePromocode(tx, {
-      code: promocodeInput,
-      userId: user.id,
-      restaurantId,
-      itemsSubtotal,
-      deliveryFee,
-    });
-    const discountTotal = promocode?.discountAmount ?? 0;
-    const customerTotal = itemsSubtotal + deliveryFee + serviceFee - discountTotal;
-    const restaurantCommission = Math.floor(
-      (itemsSubtotal * restaurant.defaultCommissionBps) / 10000,
-    );
-    const restaurantPayout = itemsSubtotal - restaurantCommission;
-    const courierEarning = deliveryFee;
-    const platformRevenue =
-      restaurantCommission + serviceFee + deliveryFee - courierEarning;
-    const publicNumber = createPublicOrderNumber();
-
-    return tx.order.create({
-    data: {
-      publicNumber,
-      customerId: user.id,
-      restaurantId,
-      status: "pending_confirmation",
-      paymentMethod: "cash_to_courier",
-      paymentStatus: "pending",
-      customerComment: customerComment || null,
-      items: {
-        create: menuItems.map((item) => {
-          const translation = item.translations.find(
-            (itemTranslation) => itemTranslation.language === "ru",
-          );
-          const quantity = quantities.get(item.id) ?? 0;
-
-          return {
-            menuItemId: item.id,
-            nameSnapshot: translation?.name ?? "Блюдо",
-            descriptionSnapshot: translation?.description,
-            unitPrice: item.price,
-            quantity,
-            totalPrice: item.price * quantity,
-            currency: item.currency,
-          };
-        }),
-      },
-      deliveryAddress: {
-        create: {
-          nameSnapshot: user.name ?? user.phone,
-          phoneSnapshot: user.phone,
-          city: address.city,
-          addressLine: address.addressLine,
-          street: address.street,
-          house: address.house,
-          apartment: address.apartment,
-          entrance: address.entrance,
-          floor: address.floor,
-          intercom: address.intercom,
-          comment: address.comment,
-          latitude: address.latitude,
-          longitude: address.longitude,
-        },
-      },
-      financials: {
-        create: {
+  for (let attempt = 0; attempt < PUBLIC_ORDER_NUMBER_RETRY_COUNT; attempt += 1) {
+    try {
+      const order = await prisma.$transaction(async (tx) => {
+        const promocode = await resolvePromocode(tx, {
+          code: promocodeInput,
+          userId: user.id,
+          restaurantId,
           itemsSubtotal,
           deliveryFee,
-          serviceFee,
-          discountTotal,
-          customerTotal,
-          restaurantCommission,
-          restaurantPayout,
-          courierEarning,
-          platformRevenue,
-          currency: "KZT",
-        },
-      },
-      deliveryFeeCalculation: {
-        create: {
-          restaurantLatitude: restaurant.latitude,
-          restaurantLongitude: restaurant.longitude,
-          customerLatitude: address.latitude,
-          customerLongitude: address.longitude,
-          distanceMeters,
-          baseFee: deliveryRule.baseFee,
-          perKmFee: deliveryRule.perKmFee,
-          minFee: deliveryRule.minFee,
-          maxFee: deliveryRule.maxFee,
-          finalFee: deliveryFee,
-          currency: "KZT",
-          source: "haversine",
-        },
-      },
-      delivery: {
-        create: {
-          status: "pending_assignment",
-        },
-      },
-      payments: {
-        create: [
-          {
-            method: "cash_to_courier",
-            status: "pending",
-            amount: customerTotal,
-            currency: "KZT",
-            provider: "dev",
-          },
-        ],
-      },
-      statusHistory: {
-        create: [
-          {
-            fromStatus: null,
-            toStatus: "pending_confirmation",
-            changedByUserId: user.id,
-            comment: "Заказ создан клиентом.",
-          },
-        ],
-      },
-      promoRedemptions: promocode
-        ? {
-            create: [
-              {
-                promocodeId: promocode.id,
-                userId: user.id,
-                discountAmount: promocode.discountAmount,
-              },
-            ],
-          }
-        : undefined,
-    },
-    });
-  });
+        });
+        const discountTotal = promocode?.discountAmount ?? 0;
+        const customerTotal =
+          itemsSubtotal + deliveryFee + serviceFee - discountTotal;
+        const restaurantCommission = Math.floor(
+          (itemsSubtotal * restaurant.defaultCommissionBps) / 10000,
+        );
+        const restaurantPayout = itemsSubtotal - restaurantCommission;
+        const courierEarning = deliveryFee;
+        const platformRevenue =
+          restaurantCommission + serviceFee + deliveryFee - courierEarning;
+        const publicNumber = createPublicOrderNumber();
 
-  redirect(`/orders/${order.publicNumber}?created=1`);
+        return tx.order.create({
+          data: {
+            publicNumber,
+            customerId: user.id,
+            restaurantId,
+            status: "pending_confirmation",
+            paymentMethod: "cash_to_courier",
+            paymentStatus: "pending",
+            customerComment: customerComment || null,
+            items: {
+              create: menuItems.map((item) => {
+                const translation = item.translations.find(
+                  (itemTranslation) => itemTranslation.language === "ru",
+                );
+                const quantity = quantities.get(item.id) ?? 0;
+
+                return {
+                  menuItemId: item.id,
+                  nameSnapshot: translation?.name ?? "Блюдо",
+                  descriptionSnapshot: translation?.description,
+                  unitPrice: item.price,
+                  quantity,
+                  totalPrice: item.price * quantity,
+                  currency: item.currency,
+                };
+              }),
+            },
+            deliveryAddress: {
+              create: {
+                nameSnapshot: user.name ?? user.phone,
+                phoneSnapshot: user.phone,
+                city: address.city,
+                addressLine: address.addressLine,
+                street: address.street,
+                house: address.house,
+                apartment: address.apartment,
+                entrance: address.entrance,
+                floor: address.floor,
+                intercom: address.intercom,
+                comment: address.comment,
+                latitude: address.latitude,
+                longitude: address.longitude,
+              },
+            },
+            financials: {
+              create: {
+                itemsSubtotal,
+                deliveryFee,
+                serviceFee,
+                discountTotal,
+                customerTotal,
+                restaurantCommission,
+                restaurantPayout,
+                courierEarning,
+                platformRevenue,
+                currency: "KZT",
+              },
+            },
+            deliveryFeeCalculation: {
+              create: {
+                restaurantLatitude: restaurant.latitude,
+                restaurantLongitude: restaurant.longitude,
+                customerLatitude: address.latitude,
+                customerLongitude: address.longitude,
+                distanceMeters,
+                baseFee: deliveryRule.baseFee,
+                perKmFee: deliveryRule.perKmFee,
+                minFee: deliveryRule.minFee,
+                maxFee: deliveryRule.maxFee,
+                finalFee: deliveryFee,
+                currency: "KZT",
+                source: "haversine",
+              },
+            },
+            delivery: {
+              create: {
+                status: "pending_assignment",
+              },
+            },
+            payments: {
+              create: [
+                {
+                  method: "cash_to_courier",
+                  status: "pending",
+                  amount: customerTotal,
+                  currency: "KZT",
+                  provider: "dev",
+                },
+              ],
+            },
+            statusHistory: {
+              create: [
+                {
+                  fromStatus: null,
+                  toStatus: "pending_confirmation",
+                  changedByUserId: user.id,
+                  comment: "Заказ создан клиентом.",
+                },
+              ],
+            },
+            promoRedemptions: promocode
+              ? {
+                create: [
+                  {
+                    promocodeId: promocode.id,
+                    userId: user.id,
+                    discountAmount: promocode.discountAmount,
+                  },
+                ],
+              }
+              : undefined,
+          },
+        });
+      });
+
+      redirect(`/orders/${order.publicNumber}?created=1`);
+    } catch (error) {
+      if (isPublicOrderNumberCollision(error)) {
+        continue;
+      }
+
+      throw error;
+    }
+  }
+
+  redirect("/checkout?error=order_number_collision");
 }

@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
-import { getCurrentUser } from "@/domains/auth/session";
+import { requireAnyRole } from "@/domains/auth/authorization";
 import { getPrisma } from "@/lib/db/prisma";
 
 type RestaurantStaffContext = {
@@ -67,11 +67,7 @@ function readPrice(formData: FormData) {
 }
 
 async function requireRestaurantStaff(): Promise<RestaurantStaffContext> {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const user = await requireAnyRole(["restaurant_staff", "admin"]);
 
   const staff = await getPrisma().restaurantStaff.findFirst({
     where: { userId: user.id },

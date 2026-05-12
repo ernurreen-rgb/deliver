@@ -14,6 +14,7 @@ export async function setCourierOnlineForUser(
   userId: string,
 ): Promise<CourierAvailabilityResult> {
   const prisma = getPrisma();
+  const allowedCurrentStatuses = ["inactive", "available"] as const;
 
   const courier = await prisma.courier.findUnique({
     where: { userId },
@@ -44,16 +45,35 @@ export async function setCourierOnlineForUser(
     return { status: "courier_location_required" };
   }
 
-  await prisma.$transaction([
-    prisma.courier.update({
-      where: { id: courier.id },
+  const updated = await prisma.$transaction(async (tx) => {
+    const courierUpdate = await tx.courier.updateMany({
+      where: {
+        id: courier.id,
+        status: { in: [...allowedCurrentStatuses] },
+        deliveries: {
+          none: {
+            status: { in: [...activeDeliveryStatuses] },
+          },
+        },
+      },
       data: { status: "available" },
-    }),
-    prisma.courierAvailability.update({
+    });
+
+    if (courierUpdate.count !== 1) {
+      return false;
+    }
+
+    await tx.courierAvailability.updateMany({
       where: { courierId: courier.id },
       data: { status: "available" },
-    }),
-  ]);
+    });
+
+    return true;
+  });
+
+  if (!updated) {
+    return { status: "active_delivery_exists" };
+  }
 
   return { status: "updated" };
 }
@@ -62,6 +82,7 @@ export async function setCourierOfflineForUser(
   userId: string,
 ): Promise<CourierAvailabilityResult> {
   const prisma = getPrisma();
+  const allowedCurrentStatuses = ["available", "inactive"] as const;
 
   const courier = await prisma.courier.findUnique({
     where: { userId },
@@ -94,16 +115,30 @@ export async function setCourierOfflineForUser(
   const deliveryIds = [...new Set(courier.offers.map((offer) => offer.deliveryId))];
   const now = new Date();
 
-  await prisma.$transaction([
-    prisma.courier.update({
-      where: { id: courier.id },
+  const updated = await prisma.$transaction(async (tx) => {
+    const courierUpdate = await tx.courier.updateMany({
+      where: {
+        id: courier.id,
+        status: { in: [...allowedCurrentStatuses] },
+        deliveries: {
+          none: {
+            status: { in: [...activeDeliveryStatuses] },
+          },
+        },
+      },
       data: { status: "inactive" },
-    }),
-    prisma.courierAvailability.updateMany({
+    });
+
+    if (courierUpdate.count !== 1) {
+      return false;
+    }
+
+    await tx.courierAvailability.updateMany({
       where: { courierId: courier.id },
       data: { status: "inactive" },
-    }),
-    prisma.courierOffer.updateMany({
+    });
+
+    await tx.courierOffer.updateMany({
       where: {
         courierId: courier.id,
         status: "pending",
@@ -112,8 +147,14 @@ export async function setCourierOfflineForUser(
         status: "cancelled",
         respondedAt: now,
       },
-    }),
-  ]);
+    });
+
+    return true;
+  });
+
+  if (!updated) {
+    return { status: "active_delivery_exists" };
+  }
 
   for (const deliveryId of deliveryIds) {
     await dispatchNextCourierOffer(deliveryId);

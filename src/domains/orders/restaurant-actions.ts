@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/domains/auth/session";
+import { requireAnyRole } from "@/domains/auth/authorization";
 import { writeAuditLog } from "@/domains/audit/log";
 import { dispatchNextCourierOffer } from "@/domains/delivery/dispatch";
 import type { OrderStatus } from "@/generated/prisma/enums";
@@ -41,11 +41,7 @@ function getRestaurantOrderAuditAction(status: OrderStatus) {
 }
 
 async function requireRestaurantOrder(orderId: string) {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    redirect("/login");
-  }
+  const user = await requireAnyRole(["restaurant_staff", "admin"]);
 
   if (!orderId) {
     redirect("/restaurant?error=order_required");

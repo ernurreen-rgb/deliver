@@ -87,6 +87,27 @@ export async function verifyOtpAction(formData: FormData) {
     redirect("/login?error=invalid_code");
   }
 
+  const requestHeaders = await headers();
+  const clientIp = getClientIp(requestHeaders);
+  const [phoneLimit, ipLimit] = await Promise.all([
+    consumeRateLimit({
+      namespace: "otp:verify:phone",
+      identifier: phone,
+      limit: 10,
+      windowMs: 15 * 60 * 1000,
+    }),
+    consumeRateLimit({
+      namespace: "otp:verify:ip",
+      identifier: clientIp,
+      limit: 60,
+      windowMs: 15 * 60 * 1000,
+    }),
+  ]);
+
+  if (!phoneLimit.allowed || !ipLimit.allowed) {
+    redirect(`/login?phone=${encodeURIComponent(phone)}&error=too_many_requests`);
+  }
+
   const challenge = await getPrisma().authVerificationCode.findFirst({
     where: {
       phone,

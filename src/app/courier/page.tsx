@@ -1,7 +1,6 @@
-import Link from "next/link";
 import { SurfaceShell } from "@/components/layout/surface-shell";
 import { InfoTile } from "@/components/shared/info-tile";
-import { getCurrentUser } from "@/domains/auth/session";
+import { requireAnyRole } from "@/domains/auth/authorization";
 import {
   acceptCourierOfferAction,
   completeDeliveryAction,
@@ -202,24 +201,8 @@ function DeliveryAction({ delivery }: DeliveryActionProps) {
 }
 
 export default async function CourierPage({ searchParams }: CourierPageProps) {
-  const user = await getCurrentUser();
+  const user = await requireAnyRole(["courier", "admin"]);
   const params = await searchParams;
-
-  if (!user) {
-    return (
-      <SurfaceShell
-        title="Кабинет курьера"
-        description="Войдите как курьер, чтобы видеть предложения заказов и активные доставки."
-      >
-        <Link
-          href="/login"
-          className="inline-flex rounded-md bg-accent px-4 py-3 text-sm font-medium text-accent-foreground"
-        >
-          Войти по телефону
-        </Link>
-      </SurfaceShell>
-    );
-  }
 
   const dashboard = await getCourierDashboard(user.id);
   const errorMessage = params.error ? errorMessages[params.error] : null;

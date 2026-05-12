@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/domains/auth/session";
+import { requireAnyRole } from "@/domains/auth/authorization";
 import {
   setCourierOfflineForUser,
   setCourierOnlineForUser,
@@ -29,13 +29,7 @@ function readString(formData: FormData, key: string, maxLength = 120) {
 }
 
 async function requireCurrentUser() {
-  const user = await getCurrentUser();
-
-  if (!user) {
-    redirect("/login");
-  }
-
-  return user;
+  return requireAnyRole(["courier", "admin"]);
 }
 
 function revalidateCourierFlows() {

@@ -2,7 +2,7 @@ import Link from "next/link";
 import { InfoTile } from "@/components/shared/info-tile";
 import { SurfaceShell } from "@/components/layout/surface-shell";
 import { OrderTimelinePanel } from "@/components/orders/order-timeline";
-import { getCurrentUser } from "@/domains/auth/session";
+import { requireAnyRole } from "@/domains/auth/authorization";
 import {
   acceptRestaurantOrderAction,
   markOrderReadyForPickupAction,
@@ -158,24 +158,8 @@ function OrderActions({ order }: { order: { id: string; status: string } }) {
 export default async function RestaurantDashboardPage({
   searchParams,
 }: RestaurantDashboardPageProps) {
-  const user = await getCurrentUser();
+  const user = await requireAnyRole(["restaurant_staff", "admin"]);
   const params = await searchParams;
-
-  if (!user) {
-    return (
-      <SurfaceShell
-        title="Кабинет ресторана"
-        description="Войдите как сотрудник ресторана, чтобы подтверждать заказы и вести приготовление."
-      >
-        <Link
-          href="/login"
-          className="inline-flex rounded-md bg-accent px-4 py-3 text-sm font-medium text-accent-foreground"
-        >
-          Войти по телефону
-        </Link>
-      </SurfaceShell>
-    );
-  }
 
   const dashboard = await getRestaurantDashboard(user.id);
   const errorMessage = params.error ? errorMessages[params.error] : null;

@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { InfoTile } from "@/components/shared/info-tile";
 import { SurfaceShell } from "@/components/layout/surface-shell";
-import { getCurrentUser } from "@/domains/auth/session";
+import { requireAnyRole } from "@/domains/auth/authorization";
 import {
   createMenuCategoryAction,
   createMenuItemAction,
@@ -368,24 +368,8 @@ function CreateCategoryForm() {
 export default async function RestaurantMenuPage({
   searchParams,
 }: RestaurantMenuPageProps) {
-  const user = await getCurrentUser();
+  const user = await requireAnyRole(["restaurant_staff", "admin"]);
   const params = await searchParams;
-
-  if (!user) {
-    return (
-      <SurfaceShell
-        title="Меню ресторана"
-        description="Войдите как сотрудник ресторана."
-      >
-        <Link
-          href="/login"
-          className="inline-flex rounded-md bg-accent px-4 py-3 text-sm font-medium text-accent-foreground"
-        >
-          Войти
-        </Link>
-      </SurfaceShell>
-    );
-  }
 
   const dashboard = await getRestaurantMenuManagement(user.id);
   const errorMessage = params.error ? errorMessages[params.error] : null;
