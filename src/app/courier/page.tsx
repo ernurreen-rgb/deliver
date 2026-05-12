@@ -46,10 +46,14 @@ const errorMessages: Record<string, string> = {
   courier_unavailable: "Курьер уже занят или недоступен. Предложение передано следующему курьеру.",
   invalid_delivery_status: "Статус доставки уже изменился. Обновите страницу.",
   invalid_courier_status: "Текущий статус курьера не позволяет выполнить действие.",
+  financial_record_missing: "Не хватает финансовых данных заказа. Передайте заказ оператору.",
+  payment_amount_mismatch: "Сумма оплаты не совпадает с итогом заказа. Передайте заказ оператору.",
+  payment_record_missing: "Не найдена активная оплата заказа. Передайте заказ оператору.",
   offer_expired: "Предложение истекло. Мы попробовали назначить следующего курьера.",
   offer_not_found: "Предложение не найдено.",
   offer_required: "Не передано предложение для действия.",
   offer_unavailable: "Предложение уже недоступно.",
+  unsupported_payment_method: "Этот способ оплаты пока не закрывается курьерским действием.",
 };
 
 function AvailabilityControl({

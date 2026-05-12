@@ -195,6 +195,7 @@ export async function completeDeliveryAction(formData: FormData) {
     orderToStatus: "delivered",
     deliveredAt: now,
     releaseCourier: true,
+    settleFinances: true,
     comment: "Courier completed delivery.",
   });
 

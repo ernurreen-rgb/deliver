@@ -1,4 +1,10 @@
+import { Prisma } from "@/generated/prisma/client";
 import type { DeliveryStatus, OrderStatus } from "@/generated/prisma/enums";
+import {
+  FinancialSettlementError,
+  type FinancialSettlementErrorStatus,
+  settleDeliveredCashOrder,
+} from "@/domains/finance/order-settlement";
 import { getPrisma } from "@/lib/db/prisma";
 
 type CourierDeliveryTransitionInput = {
@@ -12,13 +18,15 @@ type CourierDeliveryTransitionInput = {
   pickedUpAt?: Date;
   deliveredAt?: Date;
   releaseCourier?: boolean;
+  settleFinances?: boolean;
 };
 
 export type CourierDeliveryTransitionResult =
   | { status: "updated"; publicNumber: string }
   | { status: "courier_not_found" }
   | { status: "delivery_not_found" }
-  | { status: "invalid_delivery_status"; publicNumber?: string };
+  | { status: "invalid_delivery_status"; publicNumber?: string }
+  | { status: FinancialSettlementErrorStatus; publicNumber?: string };
 
 class InvalidDeliveryStatusError extends Error {
   constructor(readonly publicNumber: string) {
@@ -49,10 +57,9 @@ export async function transitionCourierDeliveryForUser(
         },
         include: {
           order: {
-            select: {
-              id: true,
-              publicNumber: true,
-              status: true,
+            include: {
+              financials: true,
+              payments: true,
             },
           },
         },
@@ -97,6 +104,7 @@ export async function transitionCourierDeliveryForUser(
         data: {
           status: input.orderToStatus,
           deliveredAt: input.deliveredAt,
+          paymentStatus: input.settleFinances ? "paid" : undefined,
         },
       });
 
@@ -114,6 +122,16 @@ export async function transitionCourierDeliveryForUser(
         },
       });
 
+      if (input.settleFinances) {
+        await settleDeliveredCashOrder({
+          tx,
+          order: delivery.order,
+          courierId: courier.id,
+          actorUserId: input.userId,
+          paidAt: input.deliveredAt ?? new Date(),
+        });
+      }
+
       if (input.releaseCourier) {
         await tx.courier.update({
           where: { id: courier.id },
@@ -130,11 +148,20 @@ export async function transitionCourierDeliveryForUser(
         status: "updated",
         publicNumber: delivery.order.publicNumber,
       };
+    }, {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
   } catch (error) {
     if (error instanceof InvalidDeliveryStatusError) {
       return {
         status: "invalid_delivery_status",
+        publicNumber: error.publicNumber,
+      };
+    }
+
+    if (error instanceof FinancialSettlementError) {
+      return {
+        status: error.status,
         publicNumber: error.publicNumber,
       };
     }
