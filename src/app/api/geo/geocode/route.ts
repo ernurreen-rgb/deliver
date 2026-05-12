@@ -1,4 +1,8 @@
 import { getCurrentUser } from "@/domains/auth/session";
+import {
+  checkGeoApiRateLimit,
+  geoRateLimitResponse,
+} from "@/domains/geo/api-rate-limit";
 import { geocodeAddress } from "@/domains/geo";
 
 export const dynamic = "force-dynamic";
@@ -8,6 +12,16 @@ export async function POST(request: Request) {
 
   if (!user) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = await checkGeoApiRateLimit({
+    request,
+    userId: user.id,
+    operation: "geocode",
+  });
+
+  if (!rateLimit.allowed) {
+    return geoRateLimitResponse(rateLimit);
   }
 
   const body = (await request.json().catch(() => null)) as {

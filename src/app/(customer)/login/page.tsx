@@ -16,6 +16,7 @@ type LoginPageProps = {
 
 const errorMessages: Record<string, string> = {
   otp_provider_unavailable: "Отправка кода пока доступна только в dev-режиме.",
+  too_many_requests: "Слишком много запросов кода. Попробуйте позже.",
   too_many_attempts: "Слишком много попыток. Запросите новый код.",
   user_unavailable: "Аккаунт недоступен. Обратитесь в поддержку.",
   invalid_phone: "Введите номер Казахстана в формате +7XXXXXXXXXX.",

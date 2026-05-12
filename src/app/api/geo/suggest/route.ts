@@ -1,5 +1,9 @@
 import type { NextRequest } from "next/server";
 import { getCurrentUser } from "@/domains/auth/session";
+import {
+  checkGeoApiRateLimit,
+  geoRateLimitResponse,
+} from "@/domains/geo/api-rate-limit";
 import { suggestAddresses } from "@/domains/geo";
 
 export const dynamic = "force-dynamic";
@@ -9,6 +13,16 @@ export async function GET(request: NextRequest) {
 
   if (!user) {
     return Response.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const rateLimit = await checkGeoApiRateLimit({
+    request,
+    userId: user.id,
+    operation: "suggest",
+  });
+
+  if (!rateLimit.allowed) {
+    return geoRateLimitResponse(rateLimit);
   }
 
   const query = request.nextUrl.searchParams.get("q")?.trim() ?? "";

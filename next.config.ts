@@ -1,16 +1,18 @@
 import type { NextConfig } from "next";
 
 const isDev = process.env.NODE_ENV !== "production";
+const twoGisSources =
+  "https://mapgl.2gis.com https://*.2gis.com https://*.2gis.ru";
 
 const contentSecurityPolicy = [
   "default-src 'self'",
-  `script-src 'self' 'unsafe-inline' https://mapgl.2gis.com${isDev ? " 'unsafe-eval'" : ""}`,
+  `script-src 'self' 'unsafe-inline' ${twoGisSources}${isDev ? " 'unsafe-eval'" : ""}`,
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' blob: data: https://*.2gis.com https://*.2gis.ru",
-  "font-src 'self' https://*.2gis.com https://*.2gis.ru",
+  `img-src 'self' blob: data: ${twoGisSources}`,
+  `font-src 'self' ${twoGisSources}`,
   isDev
-    ? "connect-src 'self' http: https: ws: wss: https://*.2gis.com https://*.2gis.ru"
-    : "connect-src 'self' https: https://*.2gis.com https://*.2gis.ru",
+    ? `connect-src 'self' http: https: ws: wss: ${twoGisSources}`
+    : `connect-src 'self' ${twoGisSources}`,
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'self'",

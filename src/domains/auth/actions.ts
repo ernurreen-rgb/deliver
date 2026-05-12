@@ -1,5 +1,6 @@
 "use server";
 
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { getPrisma } from "@/lib/db/prisma";
 import {
@@ -11,6 +12,8 @@ import {
 import { safeCompareHash, sha256 } from "@/domains/auth/crypto";
 import { normalizePhone, isValidPhone } from "@/domains/auth/phone";
 import { createSession, destroySession } from "@/domains/auth/session";
+import { getClientIp } from "@/lib/http/client-ip";
+import { consumeRateLimit } from "@/lib/rate-limit";
 
 function readString(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -26,6 +29,27 @@ export async function requestOtpAction(formData: FormData) {
 
   if (!isDevOtpEnabled()) {
     redirect("/login?error=otp_provider_unavailable");
+  }
+
+  const requestHeaders = await headers();
+  const clientIp = getClientIp(requestHeaders);
+  const [phoneLimit, ipLimit] = await Promise.all([
+    consumeRateLimit({
+      namespace: "otp:request:phone",
+      identifier: phone,
+      limit: 5,
+      windowMs: 15 * 60 * 1000,
+    }),
+    consumeRateLimit({
+      namespace: "otp:request:ip",
+      identifier: clientIp,
+      limit: 30,
+      windowMs: 15 * 60 * 1000,
+    }),
+  ]);
+
+  if (!phoneLimit.allowed || !ipLimit.allowed) {
+    redirect(`/login?phone=${encodeURIComponent(phone)}&error=too_many_requests`);
   }
 
   const prisma = getPrisma();
