@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { InfoTile } from "@/components/shared/info-tile";
 import { SurfaceShell } from "@/components/layout/surface-shell";
 import { OrderTimelinePanel } from "@/components/orders/order-timeline";
@@ -336,6 +337,15 @@ export default async function OperatorPage({ searchParams }: OperatorPageProps) 
           value={String(availableCouriers.length)}
           tone={availableCouriers.length > 0 ? "accent" : "warning"}
         />
+      </div>
+
+      <div className="mt-5 flex justify-end">
+        <Link
+          href="/operator/couriers"
+          className="rounded-md border border-border px-3 py-2 text-sm font-medium text-foreground/75 transition-colors hover:border-accent hover:text-accent"
+        >
+          Управление курьерами
+        </Link>
       </div>
 
       <section className="mt-6 rounded-lg border border-warning/30 bg-warning/5 p-5">
