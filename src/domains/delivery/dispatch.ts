@@ -259,6 +259,7 @@ export async function expireCourierOffers(now = new Date()) {
   return {
     expiredCount: updateResult.count,
     deliveryCount: expiredOffers.length,
+    deliveryIds: expiredOffers.map((offer) => offer.deliveryId),
   };
 }
 

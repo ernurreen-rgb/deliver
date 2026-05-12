@@ -10,6 +10,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:watch": "vitest",
+    "jobs:dispatch-tick": "tsx --tsconfig tsconfig.json scripts/run-dispatch-tick.ts",
     "db:dev:start": "powershell -ExecutionPolicy Bypass -File scripts/start-prisma-dev.ps1",
     "db:dev:stop": "powershell -ExecutionPolicy Bypass -File scripts/stop-prisma-dev.ps1",
     "db:dev:ls": "powershell -ExecutionPolicy Bypass -File scripts/list-prisma-dev.ps1",
