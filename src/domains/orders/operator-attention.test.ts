@@ -16,6 +16,21 @@ const baseInput = {
 };
 
 describe("buildOperatorAttention", () => {
+  it("marks post-pickup operator cancellations for financial review", () => {
+    const attention = buildOperatorAttention({
+      ...baseInput,
+      orderStatus: "cancelled",
+      deliveryStatus: "cancelled",
+      requiresFinancialReview: true,
+    });
+
+    expect(attention).toMatchObject({
+      level: "critical",
+      isProblem: true,
+      sortWeight: 0,
+    });
+  });
+
   it("keeps fresh restaurant confirmation in automatic watch state", () => {
     const attention = buildOperatorAttention({
       ...baseInput,

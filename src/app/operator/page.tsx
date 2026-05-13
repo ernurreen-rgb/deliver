@@ -250,6 +250,12 @@ function OperatorOrderCard({
           <div className="mt-2 text-sm font-medium text-foreground/75">
             {order.dispatchState}
           </div>
+          {order.requiresFinancialReview ? (
+            <div className="mt-2 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
+              Требуется ручная финансовая сверка: заказ отменен после забора
+              курьером, оплата оставлена без автоматического закрытия.
+            </div>
+          ) : null}
           {order.latestOffer ? (
             <div className="mt-1 text-sm text-foreground/55">
               Последнее предложение: {order.latestOffer.courier} ·{" "}
@@ -300,6 +306,12 @@ export default async function OperatorPage({ searchParams }: OperatorPageProps) 
   const monitoringOrders = operatorQueue.filter(
     (order) => !order.attention.isProblem,
   );
+  const financialReviewOrders = operatorQueue.filter(
+    (order) => order.requiresFinancialReview,
+  ).length;
+  const activeOrders = operatorQueue.filter(
+    (order) => order.status !== "cancelled",
+  ).length;
   const assignedDeliveries = operatorQueue.filter((order) =>
     ["assigned", "picked_up", "delivering"].includes(order.deliveryStatus ?? ""),
   ).length;
@@ -320,18 +332,23 @@ export default async function OperatorPage({ searchParams }: OperatorPageProps) 
         </div>
       ) : null}
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-5">
         <InfoTile
           label="Требуют внимания"
           value={String(problemOrders.length)}
           tone={problemOrders.length > 0 ? "warning" : "default"}
         />
         <InfoTile
+          label="Фин. сверка"
+          value={String(financialReviewOrders)}
+          tone={financialReviewOrders > 0 ? "warning" : "default"}
+        />
+        <InfoTile
           label="Автопоиск работает"
           value={String(waitingCourier)}
           tone={waitingCourier > 0 ? "accent" : "default"}
         />
-        <InfoTile label="Активные" value={String(operatorQueue.length)} />
+        <InfoTile label="Активные" value={String(activeOrders)} />
         <InfoTile
           label="Курьеры онлайн"
           value={String(availableCouriers.length)}

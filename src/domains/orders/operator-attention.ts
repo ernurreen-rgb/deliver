@@ -55,6 +55,7 @@ export function buildOperatorAttention(input: {
   hasCourier: boolean;
   hasPendingOffer: boolean;
   hasRestaurantCoordinates: boolean;
+  requiresFinancialReview?: boolean;
   statusAgeMinutes: number;
   deliveryAgeMinutes: number;
 }): OperatorAttention {
@@ -63,7 +64,14 @@ export function buildOperatorAttention(input: {
   let detail = "Заказ движется по обычному сценарию.";
   let action = "Наблюдать.";
 
-  if (input.orderStatus === "pending_confirmation") {
+  if (input.requiresFinancialReview) {
+    level = "critical";
+    title = "Требуется финансовая сверка";
+    detail =
+      "Оператор отменил заказ после забора курьером. Оплата не закрыта автоматически.";
+    action =
+      "Проверьте, были ли наличные у курьера, и решите начисления вручную.";
+  } else if (input.orderStatus === "pending_confirmation") {
     if (
       input.statusAgeMinutes >=
       operatorAttentionThresholds.restaurantConfirmationMinutes

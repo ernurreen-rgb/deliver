@@ -7,9 +7,11 @@ import type { OrderStatus } from "@/generated/prisma/enums";
 import { requireAnyRole } from "@/domains/auth/authorization";
 import { writeAuditLog } from "@/domains/audit/log";
 import { dispatchNextCourierOffer } from "@/domains/delivery/dispatch";
+import { OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION } from "@/domains/finance/manual-review";
 import { getPrisma } from "@/lib/db/prisma";
 
 const activeDeliveryStatuses = ["assigned", "picked_up", "delivering"] as const;
+const financialReviewCancellationStatuses = ["picked_up", "delivering"] as const;
 const dispatchableOrderStatuses = [
   "accepted",
   "preparing",
@@ -77,6 +79,20 @@ function isCancellableOrderStatus(
 function isDeliveryRepairableOrderStatus(status: OrderStatus) {
   return deliveryRepairableOrderStatuses.includes(
     status as (typeof deliveryRepairableOrderStatuses)[number],
+  );
+}
+
+function needsFinancialReviewAfterCancel(order: {
+  status: OrderStatus;
+  delivery: { status: string } | null;
+}) {
+  return (
+    financialReviewCancellationStatuses.includes(
+      order.status as (typeof financialReviewCancellationStatuses)[number],
+    ) ||
+    financialReviewCancellationStatuses.includes(
+      order.delivery?.status as (typeof financialReviewCancellationStatuses)[number],
+    )
   );
 }
 
@@ -652,6 +668,11 @@ async function cancelOrderByOperator(input: {
         };
       }
 
+      const requiresFinancialReview = needsFinancialReviewAfterCancel(order);
+      const paymentAction = requiresFinancialReview
+        ? "left_pending_for_manual_financial_review"
+        : "cancelled_pending_authorized_payments";
+
       const orderUpdate = await tx.order.updateMany({
         where: {
           id: order.id,
@@ -707,15 +728,17 @@ async function cancelOrderByOperator(input: {
         }
       }
 
-      await tx.payment.updateMany({
-        where: {
-          orderId: order.id,
-          status: { in: ["pending", "authorized"] },
-        },
-        data: {
-          status: "cancelled",
-        },
-      });
+      if (!requiresFinancialReview) {
+        await tx.payment.updateMany({
+          where: {
+            orderId: order.id,
+            status: { in: ["pending", "authorized"] },
+          },
+          data: {
+            status: "cancelled",
+          },
+        });
+      }
 
       await tx.orderStatusHistory.create({
         data: {
@@ -723,7 +746,9 @@ async function cancelOrderByOperator(input: {
           fromStatus: order.status,
           toStatus: "cancelled",
           changedByUserId: input.operatorUserId,
-          comment: `Operator cancelled order: ${input.reason}`,
+          comment: requiresFinancialReview
+            ? `Operator cancelled order after pickup; manual financial review required: ${input.reason}`
+            : `Operator cancelled order: ${input.reason}`,
         },
       });
 
@@ -732,11 +757,16 @@ async function cancelOrderByOperator(input: {
         actorUserId: input.operatorUserId,
         entityType: "order",
         entityId: order.id,
-        action: "operator_cancelled_order_v1",
+        action: requiresFinancialReview
+          ? OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION
+          : "operator_cancelled_order_v1",
         metadata: {
           publicNumber: order.publicNumber,
           fromOrderStatus: order.status,
           toOrderStatus: "cancelled",
+          fromDeliveryStatus: order.delivery?.status ?? null,
+          financialReviewRequired: requiresFinancialReview,
+          paymentAction,
           reason: input.reason,
           deliveryId: order.delivery?.id ?? null,
           courierId: order.delivery?.courierId ?? null,

@@ -1,6 +1,7 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { formatKzt } from "@/lib/money/format";
 import { expireCourierOffers } from "@/domains/delivery/dispatch";
+import { OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION } from "@/domains/finance/manual-review";
 import {
   buildOperatorAttention,
   minutesSince,
@@ -573,63 +574,98 @@ export async function getOperatorOrders() {
   const prisma = getPrisma();
   const now = new Date();
   await expireCourierOffers();
-
-  const orders = await prisma.order.findMany({
+  const financialReviewLogs = await prisma.auditLog.findMany({
     where: {
-      status: {
-        notIn: ["delivered", "cancelled"],
-      },
+      entityType: "order",
+      action: OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
     },
     orderBy: { createdAt: "desc" },
     take: 50,
-    include: {
-      customer: {
-        select: {
-          name: true,
-          phone: true,
-        },
+    select: {
+      entityId: true,
+    },
+  });
+  const financialReviewOrderIds = Array.from(
+    new Set(financialReviewLogs.map((log) => log.entityId)),
+  );
+
+  const operatorOrderInclude = {
+    customer: {
+      select: {
+        name: true,
+        phone: true,
       },
-      deliveryAddress: true,
-      financials: true,
-      statusHistory: {
-        orderBy: { createdAt: "asc" },
-        include: {
-          changedBy: {
-            select: {
-              id: true,
-              name: true,
-              phone: true,
-            },
+    },
+    deliveryAddress: true,
+    financials: true,
+    statusHistory: {
+      orderBy: { createdAt: "asc" },
+      include: {
+        changedBy: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
           },
         },
       },
-      restaurant: {
-        include: {
-          translations: true,
-        },
+    },
+    restaurant: {
+      include: {
+        translations: true,
       },
-      delivery: {
-        include: {
-          courier: {
-            include: {
-              profile: true,
-            },
+    },
+    delivery: {
+      include: {
+        courier: {
+          include: {
+            profile: true,
           },
-          offers: {
-            orderBy: { offeredAt: "desc" },
-            take: 1,
-            include: {
-              courier: {
-                include: {
-                  profile: true,
-                },
+        },
+        offers: {
+          orderBy: { offeredAt: "desc" },
+          take: 1,
+          include: {
+            courier: {
+              include: {
+                profile: true,
               },
             },
           },
         },
       },
     },
-  });
+  } as const;
+  const [activeOrders, financialReviewOrders] = await Promise.all([
+    prisma.order.findMany({
+      where: {
+        status: {
+          notIn: ["delivered", "cancelled"],
+        },
+      },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+      include: operatorOrderInclude,
+    }),
+    financialReviewOrderIds.length > 0
+      ? prisma.order.findMany({
+          where: {
+            id: { in: financialReviewOrderIds },
+            status: "cancelled",
+          },
+          orderBy: { cancelledAt: "desc" },
+          include: operatorOrderInclude,
+        })
+      : [],
+  ]);
+  const orders = Array.from(
+    new Map(
+      [...activeOrders, ...financialReviewOrders].map((order) => [
+        order.id,
+        order,
+      ]),
+    ).values(),
+  );
 
   const orderIds = orders.map((order) => order.id);
   const deliveryIds = orders.flatMap((order) =>
@@ -680,6 +716,13 @@ export async function getOperatorOrders() {
     const pendingOffer =
       latestOffer?.status === "pending" ? latestOffer : null;
     const assignedCourierName = order.delivery?.courier?.profile?.fullName;
+    const orderAuditLogs = auditLogsByEntityId.get(order.id) ?? [];
+    const deliveryAuditLogs = order.delivery
+      ? (auditLogsByEntityId.get(order.delivery.id) ?? [])
+      : [];
+    const requiresFinancialReview = orderAuditLogs.some(
+      (log) => log.action === OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
+    );
     const needsDelivery =
       !order.delivery &&
       ["accepted", "preparing", "ready_for_pickup", "courier_assigned"].includes(
@@ -701,6 +744,7 @@ export async function getOperatorOrders() {
       hasRestaurantCoordinates: Boolean(
         order.restaurant.latitude && order.restaurant.longitude,
       ),
+      requiresFinancialReview,
       statusAgeMinutes: minutesSince(statusChangedAt, now),
       deliveryAgeMinutes: minutesSince(deliveryChangedAt, now),
     });
@@ -740,10 +784,7 @@ export async function getOperatorOrders() {
         hasPendingOffer: Boolean(pendingOffer),
       },
       statusHistory: order.statusHistory,
-      auditLogs: [
-        ...(auditLogsByEntityId.get(order.id) ?? []),
-        ...(order.delivery ? (auditLogsByEntityId.get(order.delivery.id) ?? []) : []),
-      ],
+      auditLogs: [...orderAuditLogs, ...deliveryAuditLogs],
     });
 
     return {
@@ -764,6 +805,7 @@ export async function getOperatorOrders() {
       total: order.financials ? formatKzt(order.financials.customerTotal) : "-",
       dispatchState,
       attention,
+      requiresFinancialReview,
       latestOffer: latestOffer
         ? {
             status: latestOffer.status,
