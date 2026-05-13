@@ -6,7 +6,14 @@ import { getPrisma } from "@/lib/db/prisma";
 import {
   DEV_OTP_CODE,
   OTP_MAX_ATTEMPTS,
+  OTP_RATE_LIMIT_WINDOW_MS,
+  OTP_REQUEST_IP_LIMIT,
+  OTP_REQUEST_PHONE_LIMIT,
+  OTP_REQUEST_RATE_LIMIT_ERROR,
   OTP_TTL_MINUTES,
+  OTP_VERIFY_IP_LIMIT,
+  OTP_VERIFY_PHONE_LIMIT,
+  OTP_VERIFY_RATE_LIMIT_ERROR,
   isDevOtpEnabled,
 } from "@/domains/auth/constants";
 import { safeCompareHash, sha256 } from "@/domains/auth/crypto";
@@ -37,19 +44,21 @@ export async function requestOtpAction(formData: FormData) {
     consumeRateLimit({
       namespace: "otp:request:phone",
       identifier: phone,
-      limit: 5,
-      windowMs: 15 * 60 * 1000,
+      limit: OTP_REQUEST_PHONE_LIMIT,
+      windowMs: OTP_RATE_LIMIT_WINDOW_MS,
     }),
     consumeRateLimit({
       namespace: "otp:request:ip",
       identifier: clientIp,
-      limit: 30,
-      windowMs: 15 * 60 * 1000,
+      limit: OTP_REQUEST_IP_LIMIT,
+      windowMs: OTP_RATE_LIMIT_WINDOW_MS,
     }),
   ]);
 
   if (!phoneLimit.allowed || !ipLimit.allowed) {
-    redirect(`/login?phone=${encodeURIComponent(phone)}&error=too_many_requests`);
+    redirect(
+      `/login?phone=${encodeURIComponent(phone)}&error=${OTP_REQUEST_RATE_LIMIT_ERROR}`,
+    );
   }
 
   const prisma = getPrisma();
@@ -93,19 +102,21 @@ export async function verifyOtpAction(formData: FormData) {
     consumeRateLimit({
       namespace: "otp:verify:phone",
       identifier: phone,
-      limit: 10,
-      windowMs: 15 * 60 * 1000,
+      limit: OTP_VERIFY_PHONE_LIMIT,
+      windowMs: OTP_RATE_LIMIT_WINDOW_MS,
     }),
     consumeRateLimit({
       namespace: "otp:verify:ip",
       identifier: clientIp,
-      limit: 60,
-      windowMs: 15 * 60 * 1000,
+      limit: OTP_VERIFY_IP_LIMIT,
+      windowMs: OTP_RATE_LIMIT_WINDOW_MS,
     }),
   ]);
 
   if (!phoneLimit.allowed || !ipLimit.allowed) {
-    redirect(`/login?phone=${encodeURIComponent(phone)}&error=too_many_requests`);
+    redirect(
+      `/login?phone=${encodeURIComponent(phone)}&error=${OTP_VERIFY_RATE_LIMIT_ERROR}`,
+    );
   }
 
   const challenge = await getPrisma().authVerificationCode.findFirst({
