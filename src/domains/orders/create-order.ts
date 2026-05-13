@@ -14,8 +14,23 @@ import type { CartState } from "@/domains/cart/types";
 
 type ParsedCartItem = {
   menuItemId: string;
+  restaurantId: string;
   quantity: number;
 };
+
+type CheckoutError =
+  | "address_not_found"
+  | "cart_changed"
+  | "delivery_rule_missing"
+  | "minimum_order"
+  | "missing_coordinates"
+  | "outside_radius"
+  | "restaurant_unavailable"
+  | "single_restaurant_only";
+
+type CreateOrderTransactionResult =
+  | { status: "created"; publicNumber: string }
+  | { status: "failed"; error: CheckoutError };
 
 const MAX_CART_PAYLOAD_LENGTH = 50_000;
 const MAX_CUSTOMER_COMMENT_LENGTH = 500;
@@ -41,6 +56,7 @@ function parseCartPayload(payload: string): ParsedCartItem[] {
     return parsed.items
       .map((item) => ({
         menuItemId: String(item.menuItemId),
+        restaurantId: typeof item.restaurantId === "string" ? item.restaurantId : "",
         quantity: Number(item.quantity),
       }))
       .filter(
@@ -53,6 +69,25 @@ function parseCartPayload(payload: string): ParsedCartItem[] {
   } catch {
     return [];
   }
+}
+
+function getCartRestaurantId(cartItems: ParsedCartItem[]) {
+  const restaurantIds = new Set(cartItems.map((item) => item.restaurantId));
+
+  if (restaurantIds.size !== 1) {
+    return null;
+  }
+
+  const [restaurantId] = restaurantIds;
+  return restaurantId || null;
+}
+
+function checkoutFailure(error: CheckoutError): CreateOrderTransactionResult {
+  return { status: "failed", error };
+}
+
+function redirectCheckoutError(error: CheckoutError): never {
+  redirect(`/checkout?error=${error}`);
 }
 
 function createPublicOrderNumber() {
@@ -74,6 +109,14 @@ function isPublicOrderNumberCollision(error: unknown) {
   return Array.isArray(target)
     ? target.includes("publicNumber")
     : String(target ?? "").includes("publicNumber");
+}
+
+function isRetryableOrderCreateError(error: unknown) {
+  return (
+    isPublicOrderNumberCollision(error) ||
+    (error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2034")
+  );
 }
 
 async function resolvePromocode(tx: Prisma.TransactionClient, input: {
@@ -136,17 +179,15 @@ async function resolvePromocode(tx: Prisma.TransactionClient, input: {
     return null;
   }
 
-  const [userRedemptions, totalRedemptions] = await Promise.all([
-    tx.promocodeRedemption.count({
-      where: {
-        promocodeId: promocode.id,
-        userId: input.userId,
-      },
-    }),
-    tx.promocodeRedemption.count({
-      where: { promocodeId: promocode.id },
-    }),
-  ]);
+  const userRedemptions = await tx.promocodeRedemption.count({
+    where: {
+      promocodeId: promocode.id,
+      userId: input.userId,
+    },
+  });
+  const totalRedemptions = await tx.promocodeRedemption.count({
+    where: { promocodeId: promocode.id },
+  });
 
   if (
     promocode.perUserUsageLimit !== null &&
@@ -215,146 +256,161 @@ export async function createOrderAction(formData: FormData) {
     redirect("/checkout?error=empty_cart");
   }
 
-  const prisma = getPrisma();
-  const address = await prisma.address.findFirst({
-    where: {
-      id: addressId,
-      userId: user.id,
-    },
-  });
+  const restaurantId = getCartRestaurantId(cartItems);
 
-  if (!address) {
-    redirect("/checkout?error=address_not_found");
-  }
-
-  const menuItems = await prisma.menuItem.findMany({
-    where: {
-      id: {
-        in: cartItems.map((item) => item.menuItemId),
-      },
-      isActive: true,
-      isAvailable: true,
-    },
-    include: {
-      translations: true,
-      restaurant: {
-        include: {
-          translations: true,
-        },
-      },
-    },
-  });
-
-  if (menuItems.length !== cartItems.length) {
-    redirect("/checkout?error=cart_changed");
-  }
-
-  const restaurantId = menuItems[0]?.restaurantId;
-  const restaurant = menuItems[0]?.restaurant;
-
-  if (!restaurantId || !restaurant) {
-    redirect("/checkout?error=cart_changed");
-  }
-
-  if (restaurant.status !== "active") {
-    redirect("/checkout?error=restaurant_unavailable");
-  }
-
-  if (menuItems.some((item) => item.restaurantId !== restaurantId)) {
+  if (!restaurantId) {
     redirect("/checkout?error=single_restaurant_only");
   }
 
-  const restaurantLat = toNumber(restaurant.latitude);
-  const restaurantLng = toNumber(restaurant.longitude);
-  const customerLat = toNumber(address.latitude);
-  const customerLng = toNumber(address.longitude);
-
-  if (
-    restaurantLat === null ||
-    restaurantLng === null ||
-    customerLat === null ||
-    customerLng === null
-  ) {
-    redirect("/checkout?error=missing_coordinates");
-  }
-
-  const distanceMeters = calculateDistanceMeters(
-    { latitude: restaurantLat, longitude: restaurantLng },
-    { latitude: customerLat, longitude: customerLng },
-  );
-
-  if (
-    restaurant.deliveryRadiusMeters !== null &&
-    distanceMeters > restaurant.deliveryRadiusMeters
-  ) {
-    redirect("/checkout?error=outside_radius");
-  }
-
-  const deliveryRule = await prisma.deliveryPricingRule.findFirst({
-    where: { isActive: true },
-    orderBy: { createdAt: "asc" },
-  });
-
-  if (!deliveryRule) {
-    redirect("/checkout?error=delivery_rule_missing");
-  }
-
-  const deliveryFee = calculateDeliveryFee({
-    distanceMeters,
-    baseFee: deliveryRule.baseFee,
-    perKmFee: deliveryRule.perKmFee,
-    minFee: deliveryRule.minFee,
-    maxFee: deliveryRule.maxFee,
-  });
-
+  const prisma = getPrisma();
   const quantities = new Map(
     cartItems.map((item) => [item.menuItemId, item.quantity]),
   );
-  const itemsSubtotal = menuItems.reduce((sum, item) => {
-    return sum + item.price * (quantities.get(item.id) ?? 0);
-  }, 0);
-
-  if (itemsSubtotal < restaurant.minimumOrderAmount) {
-    redirect("/checkout?error=minimum_order");
-  }
-
-  const serviceRule = await prisma.serviceFeeRule.findFirst({
-    where: {
-      isActive: true,
-      OR: [{ minOrderAmount: null }, { minOrderAmount: { lte: itemsSubtotal } }],
-    },
-    orderBy: { createdAt: "asc" },
-  });
-
-  const rawServiceFee = serviceRule
-    ? serviceRule.fixedFee +
-    Math.floor((itemsSubtotal * serviceRule.percentBps) / 10000)
-    : 0;
-  const serviceFee = Math.min(rawServiceFee, serviceRule?.maxFee ?? rawServiceFee);
 
   for (let attempt = 0; attempt < PUBLIC_ORDER_NUMBER_RETRY_COUNT; attempt += 1) {
-    try {
-      const order = await prisma.$transaction(async (tx) => {
-        const promocode = await resolvePromocode(tx, {
-          code: promocodeInput,
-          userId: user.id,
-          restaurantId,
-          itemsSubtotal,
-          deliveryFee,
-        });
-        const discountTotal = promocode?.discountAmount ?? 0;
-        const customerTotal =
-          itemsSubtotal + deliveryFee + serviceFee - discountTotal;
-        const restaurantCommission = Math.floor(
-          (itemsSubtotal * restaurant.defaultCommissionBps) / 10000,
-        );
-        const restaurantPayout = itemsSubtotal - restaurantCommission;
-        const courierEarning = deliveryFee;
-        const platformRevenue =
-          restaurantCommission + serviceFee + deliveryFee - courierEarning;
-        const publicNumber = createPublicOrderNumber();
+    let result: CreateOrderTransactionResult | null = null;
 
-        return tx.order.create({
+    try {
+      result = await prisma.$transaction(
+        async (tx) => {
+          const address = await tx.address.findFirst({
+            where: {
+              id: addressId,
+              userId: user.id,
+            },
+          });
+
+          if (!address) {
+            return checkoutFailure("address_not_found");
+          }
+
+          const menuItems = await tx.menuItem.findMany({
+            where: {
+              id: {
+                in: cartItems.map((item) => item.menuItemId),
+              },
+              restaurantId,
+              isActive: true,
+              isAvailable: true,
+            },
+            include: {
+              translations: true,
+              restaurant: {
+                include: {
+                  translations: true,
+                },
+              },
+            },
+          });
+
+          if (menuItems.length !== cartItems.length) {
+            return checkoutFailure("cart_changed");
+          }
+
+          const restaurant = menuItems[0]?.restaurant;
+
+          if (!restaurant || restaurant.id !== restaurantId) {
+            return checkoutFailure("cart_changed");
+          }
+
+          if (restaurant.status !== "active") {
+            return checkoutFailure("restaurant_unavailable");
+          }
+
+          if (menuItems.some((item) => item.restaurantId !== restaurantId)) {
+            return checkoutFailure("single_restaurant_only");
+          }
+
+          const restaurantLat = toNumber(restaurant.latitude);
+          const restaurantLng = toNumber(restaurant.longitude);
+          const customerLat = toNumber(address.latitude);
+          const customerLng = toNumber(address.longitude);
+
+          if (
+            restaurantLat === null ||
+            restaurantLng === null ||
+            customerLat === null ||
+            customerLng === null
+          ) {
+            return checkoutFailure("missing_coordinates");
+          }
+
+          const distanceMeters = calculateDistanceMeters(
+            { latitude: restaurantLat, longitude: restaurantLng },
+            { latitude: customerLat, longitude: customerLng },
+          );
+
+          if (
+            restaurant.deliveryRadiusMeters !== null &&
+            distanceMeters > restaurant.deliveryRadiusMeters
+          ) {
+            return checkoutFailure("outside_radius");
+          }
+
+          const deliveryRule = await tx.deliveryPricingRule.findFirst({
+            where: { isActive: true },
+            orderBy: { createdAt: "asc" },
+          });
+
+          if (!deliveryRule) {
+            return checkoutFailure("delivery_rule_missing");
+          }
+
+          const deliveryFee = calculateDeliveryFee({
+            distanceMeters,
+            baseFee: deliveryRule.baseFee,
+            perKmFee: deliveryRule.perKmFee,
+            minFee: deliveryRule.minFee,
+            maxFee: deliveryRule.maxFee,
+          });
+
+          const itemsSubtotal = menuItems.reduce((sum, item) => {
+            return sum + item.price * (quantities.get(item.id) ?? 0);
+          }, 0);
+
+          if (itemsSubtotal < restaurant.minimumOrderAmount) {
+            return checkoutFailure("minimum_order");
+          }
+
+          const serviceRule = await tx.serviceFeeRule.findFirst({
+            where: {
+              isActive: true,
+              OR: [
+                { minOrderAmount: null },
+                { minOrderAmount: { lte: itemsSubtotal } },
+              ],
+            },
+            orderBy: { createdAt: "asc" },
+          });
+
+          const rawServiceFee = serviceRule
+            ? serviceRule.fixedFee +
+              Math.floor((itemsSubtotal * serviceRule.percentBps) / 10000)
+            : 0;
+          const serviceFee = Math.min(
+            rawServiceFee,
+            serviceRule?.maxFee ?? rawServiceFee,
+          );
+          const promocode = await resolvePromocode(tx, {
+            code: promocodeInput,
+            userId: user.id,
+            restaurantId,
+            itemsSubtotal,
+            deliveryFee,
+          });
+          const discountTotal = promocode?.discountAmount ?? 0;
+          const customerTotal =
+            itemsSubtotal + deliveryFee + serviceFee - discountTotal;
+          const restaurantCommission = Math.floor(
+            (itemsSubtotal * restaurant.defaultCommissionBps) / 10000,
+          );
+          const restaurantPayout = itemsSubtotal - restaurantCommission;
+          const courierEarning = deliveryFee;
+          const platformRevenue =
+            restaurantCommission + serviceFee + deliveryFee - courierEarning;
+          const publicNumber = createPublicOrderNumber();
+
+          const order = await tx.order.create({
           data: {
             publicNumber,
             customerId: user.id,
@@ -467,16 +523,33 @@ export async function createOrderAction(formData: FormData) {
               : undefined,
           },
         });
-      });
 
-      redirect(`/orders/${order.publicNumber}?created=1`);
+          return {
+            status: "created" as const,
+            publicNumber: order.publicNumber,
+          };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        },
+      );
     } catch (error) {
-      if (isPublicOrderNumberCollision(error)) {
+      if (isRetryableOrderCreateError(error)) {
         continue;
       }
 
       throw error;
     }
+
+    if (!result) {
+      continue;
+    }
+
+    if (result.status === "failed") {
+      redirectCheckoutError(result.error);
+    }
+
+    redirect(`/orders/${result.publicNumber}?created=1`);
   }
 
   redirect("/checkout?error=order_number_collision");
