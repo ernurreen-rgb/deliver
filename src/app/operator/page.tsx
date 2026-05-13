@@ -7,6 +7,7 @@ import {
   assignCourierManuallyAction,
   cancelOrderByOperatorAction,
   createDeliveryForOrderAction,
+  resolveFinancialReviewAction,
   retryCourierDispatchAction,
   unassignCourierAction,
 } from "@/domains/delivery/operator-actions";
@@ -37,6 +38,9 @@ const dateFormatter = new Intl.DateTimeFormat("ru-KZ", {
 });
 
 const errorMessages: Record<string, string> = {
+  financial_review_already_resolved: "Финансовая сверка уже закрыта.",
+  financial_review_not_found: "Финансовая сверка не найдена.",
+  invalid_financial_review_resolution: "Выберите корректное решение сверки.",
   active_offer_exists: "У доставки уже есть активное предложение курьеру.",
   already_assigned: "Курьер уже назначен.",
   courier_not_found: "Курьер не найден.",
@@ -171,6 +175,41 @@ function OperatorControls({
         <div className="rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-warning">
           Нет доступных курьеров для ручного назначения.
         </div>
+      ) : null}
+
+      {order.requiresFinancialReview ? (
+        <form
+          action={resolveFinancialReviewAction}
+          className="grid gap-3 rounded-md border border-warning/30 bg-warning/5 p-3"
+        >
+          <input name="orderId" type="hidden" value={order.id} />
+          <div className="grid gap-3 sm:grid-cols-[minmax(180px,220px)_minmax(220px,1fr)_auto]">
+            <select
+              name="resolution"
+              required
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-warning"
+              defaultValue=""
+            >
+              <option value="" disabled>
+                Решение сверки
+              </option>
+              <option value="cash_not_collected">Наличные не получены</option>
+              <option value="manual_adjustment">Ручная корректировка</option>
+            </select>
+            <input
+              name="note"
+              maxLength={500}
+              placeholder="Комментарий оператора"
+              className="h-10 rounded-md border border-border bg-background px-3 text-sm outline-none focus:border-warning"
+            />
+            <button
+              type="submit"
+              className="h-10 rounded-md bg-warning px-4 text-sm font-medium text-warning-foreground"
+            >
+              Сверка решена
+            </button>
+          </div>
+        </form>
       ) : null}
 
       {order.canCancel ? (

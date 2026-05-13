@@ -1,7 +1,10 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { formatKzt } from "@/lib/money/format";
 import { expireCourierOffers } from "@/domains/delivery/dispatch";
-import { OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION } from "@/domains/finance/manual-review";
+import {
+  OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
+  OPERATOR_RESOLVED_FINANCIAL_REVIEW_ACTION,
+} from "@/domains/finance/manual-review";
 import {
   buildOperatorAttention,
   minutesSince,
@@ -574,7 +577,7 @@ export async function getOperatorOrders() {
   const prisma = getPrisma();
   const now = new Date();
   await expireCourierOffers();
-  const financialReviewLogs = await prisma.auditLog.findMany({
+  const financialReviewRequiredLogs = await prisma.auditLog.findMany({
     where: {
       entityType: "order",
       action: OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
@@ -585,8 +588,27 @@ export async function getOperatorOrders() {
       entityId: true,
     },
   });
-  const financialReviewOrderIds = Array.from(
-    new Set(financialReviewLogs.map((log) => log.entityId)),
+  const financialReviewCandidateIds = Array.from(
+    new Set(financialReviewRequiredLogs.map((log) => log.entityId)),
+  );
+  const financialReviewResolvedLogs =
+    financialReviewCandidateIds.length > 0
+      ? await prisma.auditLog.findMany({
+          where: {
+            entityType: "order",
+            entityId: { in: financialReviewCandidateIds },
+            action: OPERATOR_RESOLVED_FINANCIAL_REVIEW_ACTION,
+          },
+          select: {
+            entityId: true,
+          },
+        })
+      : [];
+  const resolvedFinancialReviewOrderIds = new Set(
+    financialReviewResolvedLogs.map((log) => log.entityId),
+  );
+  const financialReviewOrderIds = financialReviewCandidateIds.filter(
+    (orderId) => !resolvedFinancialReviewOrderIds.has(orderId),
   );
 
   const operatorOrderInclude = {
@@ -720,9 +742,14 @@ export async function getOperatorOrders() {
     const deliveryAuditLogs = order.delivery
       ? (auditLogsByEntityId.get(order.delivery.id) ?? [])
       : [];
-    const requiresFinancialReview = orderAuditLogs.some(
+    const hasFinancialReviewRequest = orderAuditLogs.some(
       (log) => log.action === OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
     );
+    const hasFinancialReviewResolution = orderAuditLogs.some(
+      (log) => log.action === OPERATOR_RESOLVED_FINANCIAL_REVIEW_ACTION,
+    );
+    const requiresFinancialReview =
+      hasFinancialReviewRequest && !hasFinancialReviewResolution;
     const needsDelivery =
       !order.delivery &&
       ["accepted", "preparing", "ready_for_pickup", "courier_assigned"].includes(

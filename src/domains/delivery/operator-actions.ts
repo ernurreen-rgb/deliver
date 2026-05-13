@@ -7,7 +7,12 @@ import type { OrderStatus } from "@/generated/prisma/enums";
 import { requireAnyRole } from "@/domains/auth/authorization";
 import { writeAuditLog } from "@/domains/audit/log";
 import { dispatchNextCourierOffer } from "@/domains/delivery/dispatch";
-import { OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION } from "@/domains/finance/manual-review";
+import {
+  OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
+  OPERATOR_RESOLVED_FINANCIAL_REVIEW_ACTION,
+  isFinancialReviewResolution,
+  type FinancialReviewResolution,
+} from "@/domains/finance/manual-review";
 import { getPrisma } from "@/lib/db/prisma";
 
 const activeDeliveryStatuses = ["assigned", "picked_up", "delivering"] as const;
@@ -40,7 +45,10 @@ type ManualOperatorResult =
   | { status: "order_not_found" }
   | { status: "courier_not_found" }
   | { status: "courier_unavailable" }
+  | { status: "financial_review_already_resolved"; publicNumber?: string }
+  | { status: "financial_review_not_found"; publicNumber?: string }
   | { status: "invalid_delivery_status"; publicNumber?: string }
+  | { status: "invalid_financial_review_resolution"; publicNumber?: string }
   | { status: "invalid_order_status"; publicNumber?: string }
   | { status: "order_not_dispatchable"; publicNumber?: string };
 
@@ -787,6 +795,132 @@ async function cancelOrderByOperator(input: {
   }
 }
 
+async function resolveFinancialReview(input: {
+  orderId: string;
+  resolution: FinancialReviewResolution;
+  note: string;
+  operatorUserId: string;
+}): Promise<ManualOperatorResult> {
+  const prisma = getPrisma();
+
+  return await prisma.$transaction(
+    async (tx) => {
+      const order = await tx.order.findUnique({
+        where: { id: input.orderId },
+        include: {
+          payments: {
+            select: {
+              id: true,
+              status: true,
+            },
+          },
+        },
+      });
+
+      if (!order) {
+        return { status: "order_not_found" as const };
+      }
+
+      if (order.status !== "cancelled") {
+        return {
+          status: "invalid_order_status" as const,
+          publicNumber: order.publicNumber,
+        };
+      }
+
+      const reviewLogs = await tx.auditLog.findMany({
+        where: {
+          entityType: "order",
+          entityId: order.id,
+          action: {
+            in: [
+              OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
+              OPERATOR_RESOLVED_FINANCIAL_REVIEW_ACTION,
+            ],
+          },
+        },
+        select: {
+          action: true,
+        },
+      });
+      const hasOpenReview = reviewLogs.some(
+        (log) => log.action === OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
+      );
+      const hasResolvedReview = reviewLogs.some(
+        (log) => log.action === OPERATOR_RESOLVED_FINANCIAL_REVIEW_ACTION,
+      );
+
+      if (!hasOpenReview) {
+        return {
+          status: "financial_review_not_found" as const,
+          publicNumber: order.publicNumber,
+        };
+      }
+
+      if (hasResolvedReview) {
+        return {
+          status: "financial_review_already_resolved" as const,
+          publicNumber: order.publicNumber,
+        };
+      }
+
+      const pendingPaymentIds = order.payments
+        .filter((payment) =>
+          ["pending", "authorized"].includes(payment.status),
+        )
+        .map((payment) => payment.id);
+      let paymentAction = "manual_adjustment_no_payment_change";
+
+      if (input.resolution === "cash_not_collected") {
+        await tx.payment.updateMany({
+          where: {
+            orderId: order.id,
+            status: { in: ["pending", "authorized"] },
+          },
+          data: {
+            status: "cancelled",
+          },
+        });
+
+        await tx.order.updateMany({
+          where: {
+            id: order.id,
+            paymentStatus: { in: ["pending", "authorized"] },
+          },
+          data: {
+            paymentStatus: "cancelled",
+          },
+        });
+
+        paymentAction = "cancelled_pending_authorized_payments";
+      }
+
+      await writeAuditLog({
+        tx,
+        actorUserId: input.operatorUserId,
+        entityType: "order",
+        entityId: order.id,
+        action: OPERATOR_RESOLVED_FINANCIAL_REVIEW_ACTION,
+        metadata: {
+          publicNumber: order.publicNumber,
+          resolution: input.resolution,
+          note: input.note || null,
+          paymentAction,
+          pendingPaymentIds,
+        },
+      });
+
+      return {
+        status: "updated" as const,
+        publicNumber: order.publicNumber,
+      };
+    },
+    {
+      isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+    },
+  );
+}
+
 export async function createDeliveryForOrderAction(formData: FormData) {
   const user = await requireAnyRole(["operator", "admin"]);
   const orderId = readString(formData, "orderId");
@@ -918,6 +1052,38 @@ export async function cancelOrderByOperatorAction(formData: FormData) {
   const result = await cancelOrderByOperator({
     orderId,
     reason,
+    operatorUserId: user.id,
+  });
+
+  revalidateOperatorFlows(
+    "publicNumber" in result ? result.publicNumber : undefined,
+  );
+
+  if (result.status === "updated") {
+    redirect(`/operator?updated=${result.publicNumber}`);
+  }
+
+  redirect(`/operator?error=${result.status}`);
+}
+
+export async function resolveFinancialReviewAction(formData: FormData) {
+  const user = await requireAnyRole(["operator", "admin"]);
+  const orderId = readString(formData, "orderId");
+  const resolution = readString(formData, "resolution");
+  const note = readString(formData, "note", 500);
+
+  if (!orderId) {
+    redirect("/operator?error=order_required");
+  }
+
+  if (!isFinancialReviewResolution(resolution)) {
+    redirect("/operator?error=invalid_financial_review_resolution");
+  }
+
+  const result = await resolveFinancialReview({
+    orderId,
+    resolution,
+    note,
     operatorUserId: user.id,
   });
 
