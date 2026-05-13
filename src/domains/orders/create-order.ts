@@ -1,6 +1,5 @@
 "use server";
 
-import { randomBytes } from "node:crypto";
 import { redirect } from "next/navigation";
 import { getPrisma } from "@/lib/db/prisma";
 import { getCurrentUser } from "@/domains/auth/session";
@@ -11,6 +10,7 @@ import {
   toNumber,
 } from "@/domains/delivery/pricing";
 import type { CartState } from "@/domains/cart/types";
+import { createPublicOrderNumber } from "@/domains/orders/public-number";
 
 type ParsedCartItem = {
   menuItemId: string;
@@ -88,13 +88,6 @@ function checkoutFailure(error: CheckoutError): CreateOrderTransactionResult {
 
 function redirectCheckoutError(error: CheckoutError): never {
   redirect(`/checkout?error=${error}`);
-}
-
-function createPublicOrderNumber() {
-  const timestamp = Date.now().toString(36).toUpperCase();
-  const suffix = randomBytes(3).toString("hex").toUpperCase();
-
-  return `A-${timestamp}-${suffix}`;
 }
 
 function isPublicOrderNumberCollision(error: unknown) {
