@@ -4,6 +4,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
 import { requireAnyRole } from "@/domains/auth/authorization";
+import {
+  MENU_IMAGE_URL_MAX_LENGTH,
+  normalizeMenuImageUrl,
+} from "@/domains/menu/image-url";
 import { getPrisma } from "@/lib/db/prisma";
 
 type RestaurantStaffContext = {
@@ -64,6 +68,18 @@ function readPrice(formData: FormData) {
   }
 
   return priceKzt * 100;
+}
+
+function readImageUrl(formData: FormData) {
+  const result = normalizeMenuImageUrl(
+    readString(formData, "imageUrl", MENU_IMAGE_URL_MAX_LENGTH),
+  );
+
+  if (!result.ok) {
+    redirect("/restaurant/menu?error=invalid_image_url");
+  }
+
+  return result.value;
 }
 
 async function requireRestaurantStaff(): Promise<RestaurantStaffContext> {
@@ -276,7 +292,7 @@ export async function createMenuItemAction(formData: FormData) {
   const nameKk = readString(formData, "nameKk", 120) || nameRu;
   const descriptionRu = readString(formData, "descriptionRu", 500);
   const descriptionKk = readString(formData, "descriptionKk", 500);
-  const imageUrl = readString(formData, "imageUrl", 500) || null;
+  const imageUrl = readImageUrl(formData);
   const price = readPrice(formData);
   const sortOrder = readSortOrder(formData);
   const prisma = getPrisma();
@@ -343,7 +359,7 @@ export async function updateMenuItemAction(formData: FormData) {
   const nameKk = readString(formData, "nameKk", 120) || nameRu;
   const descriptionRu = readString(formData, "descriptionRu", 500);
   const descriptionKk = readString(formData, "descriptionKk", 500);
-  const imageUrl = readString(formData, "imageUrl", 500) || null;
+  const imageUrl = readImageUrl(formData);
   const price = readPrice(formData);
   const sortOrder = readSortOrder(formData);
   const isActive = readBoolean(formData, "isActive");

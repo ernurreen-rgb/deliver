@@ -30,6 +30,7 @@ const errorMessages: Record<string, string> = {
   category_not_found: "Категория не найдена.",
   category_required: "Выберите категорию.",
   input_too_long: "Текст слишком длинный.",
+  invalid_image_url: "Укажите корректную ссылку на фото: только https URL.",
   invalid_price: "Укажите корректную цену.",
   item_name_required: "Укажите название блюда.",
   item_not_found: "Блюдо не найдено.",
