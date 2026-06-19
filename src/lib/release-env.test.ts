@@ -137,7 +137,7 @@ describe("validateReleaseEnv", () => {
     );
   });
 
-  it("requires a Pro-compatible Vercel plan for the per-minute dispatch cron in launch targets", () => {
+  it("requires Pro or Enterprise for production dispatch", () => {
     const baseEnv = {
       ...launchDatabaseEnv,
       CRON_SECRET: "secret",
@@ -180,7 +180,7 @@ describe("validateReleaseEnv", () => {
     );
   });
 
-  it("allows Hobby cron limits only for staging preview deployments", () => {
+  it("allows Hobby cron limits for staging deployments", () => {
     const baseEnv = {
       ...launchDatabaseEnv,
       CRON_SECRET: "secret",
@@ -193,19 +193,7 @@ describe("validateReleaseEnv", () => {
       [CLOSED_PILOT_OTP_PHONE_ALLOWLIST_ENV]: "+77000000001",
     };
 
-    expect(
-      validateReleaseEnv({
-        ...baseEnv,
-        VERCEL_ENV: "preview",
-      }).ok,
-    ).toBe(true);
-
-    const nonPreviewResult = validateReleaseEnv(baseEnv);
-
-    expect(nonPreviewResult.ok).toBe(false);
-    expect(nonPreviewResult.checks).toContainEqual(
-      expect.objectContaining({ name: VERCEL_ACCOUNT_PLAN_ENV, ok: false }),
-    );
+    expect(validateReleaseEnv(baseEnv).ok).toBe(true);
   });
 
   it("requires the database tag to match launch release targets", () => {

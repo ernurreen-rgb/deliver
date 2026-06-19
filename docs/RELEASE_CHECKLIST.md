@@ -11,8 +11,8 @@ pilot.
 - `RELEASE_DATABASE_TAG` is required and exactly equals `RELEASE_TARGET`.
 - `CRON_SECRET` is the secret configured on the same deployment.
 - `VERCEL_ACCOUNT_PLAN` is `pro` or `enterprise` for production. Hobby is
-  accepted only for staging preview deployments because Vercel does not register
-  Cron Jobs on preview deployments.
+  accepted only for staging when the configured cron schedule is
+  Hobby-compatible.
 - Only the write flag matching the target is enabled:
   `SMOKE_ALLOW_STAGING_WRITE=1` for staging or
   `SMOKE_ALLOW_PRODUCTION_WRITE=1` for production.

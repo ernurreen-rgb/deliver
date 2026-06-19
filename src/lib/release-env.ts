@@ -512,6 +512,17 @@ function checkDispatchCronPlan(
 
   const normalizedPlan = plan as VercelAccountPlan;
 
+  if (target === "production" && normalizedPlan === "hobby") {
+    return [
+      {
+        name: VERCEL_ACCOUNT_PLAN_ENV,
+        ok: false,
+        message:
+          "Production dispatch requires Vercel Pro/Enterprise or an external scheduler.",
+      },
+    ];
+  }
+
   if (normalizedPlan === "hobby" && !hobbyCompatible) {
     if (target === "staging" && isVercelPreviewEnvironment(env)) {
       return [

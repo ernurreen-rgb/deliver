@@ -61,7 +61,7 @@ Before production promotion:
 ```powershell
 $env:RELEASE_TARGET="production"
 $env:RELEASE_DATABASE_TAG="production"
-$env:VERCEL_ACCOUNT_PLAN="pro" # use "hobby" only for staging preview deploys
+$env:VERCEL_ACCOUNT_PLAN="pro" # production requires Pro/Enterprise
 $env:CLOSED_PILOT_OTP_ENABLED="true"
 $env:CLOSED_PILOT_OTP_PHONE_ALLOWLIST="+77000000001,+77000000002,+77000000003"
 $env:SMOKE_ALLOW_STAGING_WRITE="0"
