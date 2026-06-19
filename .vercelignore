@@ -1,0 +1,7 @@
+.env
+.env*.local
+.vercel
+.next
+node_modules
+.pilot-evidence
+dev-server*.log
