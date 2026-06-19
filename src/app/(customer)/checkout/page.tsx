@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { randomUUID } from "node:crypto";
 import { CartSummary } from "@/components/cart/cart-summary";
 import { CheckoutSubmit } from "@/components/checkout/checkout-submit";
 import { SurfaceShell } from "@/components/layout/surface-shell";
@@ -15,6 +16,8 @@ type CheckoutPageProps = {
 };
 
 const checkoutErrors: Record<string, string> = {
+  checkout_request_conflict: "Не удалось повторить запрос checkout. Обновите страницу и попробуйте снова.",
+  checkout_session_expired: "Сессия checkout устарела. Обновите страницу и попробуйте снова.",
   address_required: "Выберите адрес доставки.",
   address_not_found: "Адрес не найден.",
   cart_changed: "Корзина изменилась. Обновите страницу и проверьте блюда.",
@@ -34,6 +37,7 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
   const user = await getCurrentUser();
   const params = await searchParams;
   const errorMessage = params.error ? checkoutErrors[params.error] : null;
+  const checkoutRequestKey = randomUUID();
 
   if (!user) {
     return (
@@ -191,7 +195,10 @@ export default async function CheckoutPage({ searchParams }: CheckoutPageProps) 
               />
             </label>
             <div className="mt-5">
-              <CheckoutSubmit hasAddress={addresses.length > 0} />
+              <CheckoutSubmit
+                checkoutRequestKey={checkoutRequestKey}
+                hasAddress={addresses.length > 0}
+              />
             </div>
           </section>
         </aside>

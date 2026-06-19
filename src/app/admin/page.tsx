@@ -7,7 +7,9 @@ import { getAdminStats } from "@/domains/admin/queries";
 export const dynamic = "force-dynamic";
 
 export default async function AdminPage() {
-  await requireAnyRole(["admin"]);
+  await requireAnyRole(["admin"], {
+    redirectPath: "/admin",
+  });
 
   const stats = await getAdminStats();
 

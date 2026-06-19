@@ -27,9 +27,12 @@ export default async function RestaurantLocationPage({
   params,
   searchParams,
 }: RestaurantLocationPageProps) {
-  await requireAnyRole(["admin"]);
-
   const [{ id }, search] = await Promise.all([params, searchParams]);
+
+  await requireAnyRole(["admin"], {
+    redirectPath: `/admin/restaurants/${id}/location`,
+  });
+
   const restaurant = await getAdminRestaurantLocation(id);
 
   if (!restaurant) {

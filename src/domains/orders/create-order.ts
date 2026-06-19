@@ -10,6 +10,14 @@ import {
   toNumber,
 } from "@/domains/delivery/pricing";
 import type { CartState } from "@/domains/cart/types";
+import {
+  createCheckoutPayloadHash,
+  findExistingCheckoutRequestOrder,
+  isCheckoutRequestKeyCollision,
+  isSameCheckoutPayload,
+  isUniqueConstraintOn,
+  readCheckoutRequestKey,
+} from "@/domains/orders/checkout-idempotency";
 import { createPublicOrderNumber } from "@/domains/orders/public-number";
 
 type ParsedCartItem = {
@@ -21,6 +29,8 @@ type ParsedCartItem = {
 type CheckoutError =
   | "address_not_found"
   | "cart_changed"
+  | "checkout_request_conflict"
+  | "checkout_session_expired"
   | "delivery_rule_missing"
   | "minimum_order"
   | "missing_coordinates"
@@ -90,23 +100,9 @@ function redirectCheckoutError(error: CheckoutError): never {
   redirect(`/checkout?error=${error}`);
 }
 
-function isPublicOrderNumberCollision(error: unknown) {
-  if (
-    !(error instanceof Prisma.PrismaClientKnownRequestError) ||
-    error.code !== "P2002"
-  ) {
-    return false;
-  }
-
-  const target = error.meta?.target;
-  return Array.isArray(target)
-    ? target.includes("publicNumber")
-    : String(target ?? "").includes("publicNumber");
-}
-
 function isRetryableOrderCreateError(error: unknown) {
   return (
-    isPublicOrderNumberCollision(error) ||
+    isUniqueConstraintOn(error, "publicNumber") ||
     (error instanceof Prisma.PrismaClientKnownRequestError &&
       error.code === "P2034")
   );
@@ -226,6 +222,7 @@ export async function createOrderAction(formData: FormData) {
   const customerComment = readString(formData, "customerComment");
   const promocodeInput = readString(formData, "promocode").toUpperCase();
   const cartPayload = readString(formData, "cartPayload");
+  const checkoutRequestKey = readCheckoutRequestKey(formData);
 
   if (
     customerComment.length > MAX_CUSTOMER_COMMENT_LENGTH ||
@@ -235,7 +232,31 @@ export async function createOrderAction(formData: FormData) {
     redirect("/checkout?error=input_too_long");
   }
 
+  if (!checkoutRequestKey) {
+    redirectCheckoutError("checkout_session_expired");
+  }
+
   const cartItems = parseCartPayload(cartPayload);
+  const checkoutPayloadHash = createCheckoutPayloadHash({
+    addressId,
+    cartItems,
+    customerComment,
+    paymentMethod,
+    promocode: promocodeInput,
+  });
+  const prisma = getPrisma();
+  const existingOrder = await findExistingCheckoutRequestOrder(prisma, {
+    checkoutRequestKey,
+    customerId: user.id,
+  });
+
+  if (existingOrder) {
+    if (isSameCheckoutPayload(existingOrder, checkoutPayloadHash)) {
+      redirect(`/orders/${existingOrder.publicNumber}?created=1`);
+    }
+
+    redirectCheckoutError("checkout_request_conflict");
+  }
 
   if (!addressId) {
     redirect("/checkout?error=address_required");
@@ -255,7 +276,6 @@ export async function createOrderAction(formData: FormData) {
     redirect("/checkout?error=single_restaurant_only");
   }
 
-  const prisma = getPrisma();
   const quantities = new Map(
     cartItems.map((item) => [item.menuItemId, item.quantity]),
   );
@@ -266,6 +286,22 @@ export async function createOrderAction(formData: FormData) {
     try {
       result = await prisma.$transaction(
         async (tx) => {
+          const duplicateOrder = await findExistingCheckoutRequestOrder(tx, {
+            checkoutRequestKey,
+            customerId: user.id,
+          });
+
+          if (duplicateOrder) {
+            if (!isSameCheckoutPayload(duplicateOrder, checkoutPayloadHash)) {
+              return checkoutFailure("checkout_request_conflict");
+            }
+
+            return {
+              status: "created" as const,
+              publicNumber: duplicateOrder.publicNumber,
+            };
+          }
+
           const address = await tx.address.findFirst({
             where: {
               id: addressId,
@@ -411,6 +447,8 @@ export async function createOrderAction(formData: FormData) {
             status: "pending_confirmation",
             paymentMethod: "cash_to_courier",
             paymentStatus: "pending",
+            checkoutRequestKey,
+            checkoutPayloadHash,
             customerComment: customerComment || null,
             items: {
               create: menuItems.map((item) => {
@@ -527,11 +565,25 @@ export async function createOrderAction(formData: FormData) {
         },
       );
     } catch (error) {
-      if (isRetryableOrderCreateError(error)) {
-        continue;
-      }
+      if (isCheckoutRequestKeyCollision(error)) {
+        const duplicateOrder = await findExistingCheckoutRequestOrder(prisma, {
+          checkoutRequestKey,
+          customerId: user.id,
+        });
 
-      throw error;
+        result = duplicateOrder
+          ? isSameCheckoutPayload(duplicateOrder, checkoutPayloadHash)
+            ? {
+                status: "created" as const,
+                publicNumber: duplicateOrder.publicNumber,
+              }
+            : checkoutFailure("checkout_request_conflict")
+          : checkoutFailure("checkout_request_conflict");
+      } else if (isRetryableOrderCreateError(error)) {
+        continue;
+      } else {
+        throw error;
+      }
     }
 
     if (!result) {

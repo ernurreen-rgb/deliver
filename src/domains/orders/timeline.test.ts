@@ -2,6 +2,22 @@ import { describe, expect, it } from "vitest";
 import { buildOrderTimeline } from "@/domains/orders/timeline";
 
 describe("buildOrderTimeline", () => {
+  it("keeps restaurant confirmation as the current step before courier dispatch", () => {
+    const timeline = buildOrderTimeline({
+      order: { status: "pending_confirmation" },
+      delivery: {
+        status: "pending_assignment",
+        hasCourier: false,
+        hasPendingOffer: false,
+      },
+      statusHistory: [],
+      auditLogs: [],
+    });
+
+    expect(timeline.currentStep.title).toBe("Ждем ресторан");
+    expect(timeline.nextStep.title).toBe("Ресторан подтверждает заказ");
+  });
+
   it("combines status history with supplemental audit events", () => {
     const timeline = buildOrderTimeline({
       order: { status: "delivering" },

@@ -17,6 +17,7 @@ type DispatchResultStatus = Awaited<
 >["status"];
 
 export type DispatchTickSummary = {
+  dryRun: boolean;
   startedAt: string;
   finishedAt: string;
   expiredOffers: number;
@@ -26,6 +27,13 @@ export type DispatchTickSummary = {
   redispatchCandidates: number;
   dispatchResults: Record<DispatchResultStatus, number>;
 };
+
+export function isDispatchTickDryRunEnabled(params: URLSearchParams) {
+  const rawValue = params.get("dryRun") ?? params.get("dry-run");
+  const value = rawValue?.trim().toLowerCase();
+
+  return value === "1" || value === "true" || value === "yes";
+}
 
 export function isDispatchRecoverableOrderStatus(
   status: string,
@@ -61,9 +69,38 @@ function createDispatchResultCounts(): Record<DispatchResultStatus, number> {
   };
 }
 
+async function findExpiredCourierOfferCandidates(now: Date) {
+  const prisma = getPrisma();
+  const [expiredOffers, expiredCount] = await Promise.all([
+    prisma.courierOffer.findMany({
+      where: {
+        status: "pending",
+        expiresAt: { lte: now },
+      },
+      distinct: ["deliveryId"],
+      select: {
+        deliveryId: true,
+      },
+    }),
+    prisma.courierOffer.count({
+      where: {
+        status: "pending",
+        expiresAt: { lte: now },
+      },
+    }),
+  ]);
+
+  return {
+    expiredCount,
+    deliveryCount: expiredOffers.length,
+    deliveryIds: expiredOffers.map((offer) => offer.deliveryId),
+  };
+}
+
 export async function recoverMissingDeliveries(input: {
   now?: Date;
   limit?: number;
+  dryRun?: boolean;
 } = {}) {
   const prisma = getPrisma();
   const limit = input.limit ?? DISPATCH_TICK_DEFAULT_LIMIT;
@@ -83,6 +120,13 @@ export async function recoverMissingDeliveries(input: {
   if (orders.length === 0) {
     return {
       candidateCount: 0,
+      createdCount: 0,
+    };
+  }
+
+  if (input.dryRun) {
+    return {
+      candidateCount: orders.length,
       createdCount: 0,
     };
   }
@@ -137,26 +181,33 @@ async function findRedispatchCandidates(input: {
 export async function runDispatchTick(input: {
   now?: Date;
   limit?: number;
+  dryRun?: boolean;
 } = {}): Promise<DispatchTickSummary> {
   const now = input.now ?? new Date();
   const limit = input.limit ?? DISPATCH_TICK_DEFAULT_LIMIT;
+  const dryRun = input.dryRun ?? false;
   const startedAt = now.toISOString();
   const dispatchResults = createDispatchResultCounts();
 
-  const expired = await expireCourierOffers(now);
-  const missingDeliveries = await recoverMissingDeliveries({ now, limit });
+  const expired = dryRun
+    ? await findExpiredCourierOfferCandidates(now)
+    : await expireCourierOffers(now);
+  const missingDeliveries = await recoverMissingDeliveries({ now, limit, dryRun });
   const redispatchCandidates = await findRedispatchCandidates({
     now,
     limit,
     excludeDeliveryIds: expired.deliveryIds,
   });
 
-  for (const delivery of redispatchCandidates) {
-    const result = await dispatchNextCourierOffer(delivery.id, now);
-    dispatchResults[result.status] += 1;
+  if (!dryRun) {
+    for (const delivery of redispatchCandidates) {
+      const result = await dispatchNextCourierOffer(delivery.id, now);
+      dispatchResults[result.status] += 1;
+    }
   }
 
   return {
+    dryRun,
     startedAt,
     finishedAt: new Date().toISOString(),
     expiredOffers: expired.expiredCount,

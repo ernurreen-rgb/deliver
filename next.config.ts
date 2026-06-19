@@ -22,6 +22,14 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  images: {
+    localPatterns: [
+      {
+        pathname: "/images/demo/**",
+        search: "",
+      },
+    ],
+  },
   async headers() {
     return [
       {

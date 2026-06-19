@@ -507,6 +507,8 @@ model Order {
   status            OrderStatus           @default(created)
   paymentMethod     PaymentMethod
   paymentStatus     PaymentStatus         @default(pending)
+  checkoutRequestKey String?               @unique
+  checkoutPayloadHash String?
   customerComment   String?
   restaurantComment String?
   createdAt         DateTime              @default(now())

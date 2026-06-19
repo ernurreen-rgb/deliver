@@ -3,17 +3,12 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@/generated/prisma/client";
-import { requireAnyRole } from "@/domains/auth/authorization";
+import { requireRestaurantStaffContext } from "@/domains/auth/restaurant-staff-context";
 import {
   MENU_IMAGE_URL_MAX_LENGTH,
   normalizeMenuImageUrl,
 } from "@/domains/menu/image-url";
 import { getPrisma } from "@/lib/db/prisma";
-
-type RestaurantStaffContext = {
-  restaurantId: string;
-  restaurantSlug: string;
-};
 
 function readString(formData: FormData, key: string, maxLength = 500) {
   const value = formData.get(key);
@@ -80,32 +75,6 @@ function readImageUrl(formData: FormData) {
   }
 
   return result.value;
-}
-
-async function requireRestaurantStaff(): Promise<RestaurantStaffContext> {
-  const user = await requireAnyRole(["restaurant_staff", "admin"]);
-
-  const staff = await getPrisma().restaurantStaff.findFirst({
-    where: { userId: user.id },
-    orderBy: { createdAt: "asc" },
-    select: {
-      restaurantId: true,
-      restaurant: {
-        select: {
-          slug: true,
-        },
-      },
-    },
-  });
-
-  if (!staff?.restaurant) {
-    redirect("/restaurant/menu?error=restaurant_staff_required");
-  }
-
-  return {
-    restaurantId: staff.restaurantId,
-    restaurantSlug: staff.restaurant.slug,
-  };
 }
 
 function revalidateMenuPaths(restaurantSlug: string) {
@@ -204,7 +173,9 @@ async function upsertItemTranslations(input: {
 }
 
 export async function createMenuCategoryAction(formData: FormData) {
-  const staff = await requireRestaurantStaff();
+  const staff = await requireRestaurantStaffContext({
+    redirectPath: "/restaurant/menu",
+  });
   const nameRu = readRequiredString(formData, "nameRu", "category_name_required");
   const nameKk = readString(formData, "nameKk", 120) || nameRu;
   const sortOrder = readSortOrder(formData);
@@ -235,7 +206,9 @@ export async function createMenuCategoryAction(formData: FormData) {
 }
 
 export async function updateMenuCategoryAction(formData: FormData) {
-  const staff = await requireRestaurantStaff();
+  const staff = await requireRestaurantStaffContext({
+    redirectPath: "/restaurant/menu",
+  });
   const categoryId = readRequiredString(
     formData,
     "categoryId",
@@ -282,7 +255,9 @@ export async function updateMenuCategoryAction(formData: FormData) {
 }
 
 export async function createMenuItemAction(formData: FormData) {
-  const staff = await requireRestaurantStaff();
+  const staff = await requireRestaurantStaffContext({
+    redirectPath: "/restaurant/menu",
+  });
   const categoryId = readRequiredString(
     formData,
     "categoryId",
@@ -348,7 +323,9 @@ export async function createMenuItemAction(formData: FormData) {
 }
 
 export async function updateMenuItemAction(formData: FormData) {
-  const staff = await requireRestaurantStaff();
+  const staff = await requireRestaurantStaffContext({
+    redirectPath: "/restaurant/menu",
+  });
   const itemId = readRequiredString(formData, "itemId", "item_required");
   const categoryId = readRequiredString(
     formData,

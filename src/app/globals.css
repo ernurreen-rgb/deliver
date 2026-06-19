@@ -9,6 +9,7 @@
   --accent: #186a5a;
   --accent-foreground: #ffffff;
   --warning: #9a5b00;
+  --warning-foreground: #ffffff;
 }
 
 @theme inline {
@@ -20,6 +21,7 @@
   --color-accent: var(--accent);
   --color-accent-foreground: var(--accent-foreground);
   --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
   --font-sans: "Geist", "Geist Fallback", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", "Geist Mono Fallback", ui-monospace, monospace;
 }
@@ -34,6 +36,7 @@
     --accent: #72c7b5;
     --accent-foreground: #10201c;
     --warning: #f0b15b;
+    --warning-foreground: #201305;
   }
 }
 

@@ -2,7 +2,9 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClearCartEffect } from "@/components/cart/clear-cart-effect";
 import { SurfaceShell } from "@/components/layout/surface-shell";
+import { OrderAutoRefresh } from "@/components/orders/order-auto-refresh";
 import { OrderTimelinePanel } from "@/components/orders/order-timeline";
+import { OrderTrackingPanel } from "@/components/orders/order-tracking-panel";
 import { getCurrentUser } from "@/domains/auth/session";
 import { getCustomerOrderByPublicNumber } from "@/domains/orders/queries";
 import { formatKzt } from "@/lib/money/format";
@@ -24,15 +26,6 @@ const dateFormatter = new Intl.DateTimeFormat("ru-KZ", {
   hour: "2-digit",
   minute: "2-digit",
 });
-
-const deliveryStatusLabels: Record<string, string> = {
-  pending_assignment: "Ищем курьера",
-  assigned: "Курьер назначен",
-  picked_up: "Курьер забрал заказ",
-  delivering: "Курьер в пути",
-  delivered: "Доставлен",
-  cancelled: "Отменена",
-};
 
 function FinancialRow({
   label,
@@ -64,13 +57,17 @@ export default async function OrderDetailPage({
   const query = await searchParams;
 
   if (!user) {
+    const loginHref = `/login?next=${encodeURIComponent(
+      `/orders/${encodeURIComponent(number)}`,
+    )}`;
+
     return (
       <SurfaceShell
         title="Заказ"
         description="Войдите по номеру телефона, чтобы открыть детали заказа."
       >
         <Link
-          href="/login"
+          href={loginHref}
           className="inline-flex rounded-md bg-accent px-4 py-3 text-sm font-medium text-accent-foreground"
         >
           Войти по телефону
@@ -96,6 +93,8 @@ export default async function OrderDetailPage({
   const distanceKm = order.deliveryFeeCalculation
     ? (order.deliveryFeeCalculation.distanceMeters / 1000).toFixed(1)
     : null;
+  const shouldAutoRefresh =
+    order.status !== "delivered" && order.status !== "cancelled";
 
   return (
     <SurfaceShell
@@ -103,41 +102,19 @@ export default async function OrderDetailPage({
       description={`${order.restaurantName} · ${dateFormatter.format(order.createdAt)}`}
     >
       {query.created === "1" ? <ClearCartEffect /> : null}
+      <OrderAutoRefresh enabled={shouldAutoRefresh} />
 
       <div className="grid gap-5 lg:grid-cols-[1fr_360px]">
         <div className="grid gap-5">
-          <section className="rounded-lg border border-border bg-surface p-5">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="text-sm text-foreground/55">Статус заказа</div>
-                <h2 className="mt-1 text-xl font-semibold">{order.statusLabel}</h2>
-              </div>
-              <span className="w-fit rounded-full bg-surface-muted px-3 py-1 text-xs font-medium text-foreground/70">
-                {order.paymentStatusLabel}
-              </span>
-            </div>
-
-            <div className="mt-5 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-md border border-border bg-background p-4">
-                <div className="text-sm text-foreground/55">Доставка</div>
-                <div className="mt-1 font-medium">
-                  {deliveryStatusLabels[deliveryStatus] ?? deliveryStatus}
-                </div>
-              </div>
-              <div className="rounded-md border border-border bg-background p-4">
-                <div className="text-sm text-foreground/55">Курьер</div>
-                <div className="mt-1 font-medium">
-                  {courierName ?? "Пока не назначен"}
-                </div>
-              </div>
-              <div className="rounded-md border border-border bg-background p-4">
-                <div className="text-sm text-foreground/55">Расстояние</div>
-                <div className="mt-1 font-medium">
-                  {distanceKm ? `${distanceKm} км` : "Будет рассчитано"}
-                </div>
-              </div>
-            </div>
-          </section>
+          <OrderTrackingPanel
+            courierName={courierName}
+            deliveryStatus={deliveryStatus}
+            distanceKm={distanceKm}
+            orderStatus={order.status}
+            orderStatusLabel={order.statusLabel}
+            paymentStatusLabel={order.paymentStatusLabel}
+            timeline={order.timeline}
+          />
 
           <section className="rounded-lg border border-border bg-surface p-5">
             <h2 className="text-lg font-semibold">Состав заказа</h2>

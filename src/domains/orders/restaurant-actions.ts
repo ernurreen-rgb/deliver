@@ -2,9 +2,14 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { requireAnyRole } from "@/domains/auth/authorization";
+import { requireRestaurantStaffContext } from "@/domains/auth/restaurant-staff-context";
 import { writeAuditLog } from "@/domains/audit/log";
 import { dispatchNextCourierOffer } from "@/domains/delivery/dispatch";
+import {
+  cancellablePaymentStatuses,
+  getOrderPaymentStatusAfterCancellation,
+} from "@/domains/finance/payment-status";
+import { getRestaurantOrderForStaffScope } from "@/domains/orders/restaurant-scope";
 import type { OrderStatus } from "@/generated/prisma/enums";
 import { getPrisma } from "@/lib/db/prisma";
 
@@ -41,39 +46,24 @@ function getRestaurantOrderAuditAction(status: OrderStatus) {
 }
 
 async function requireRestaurantOrder(orderId: string) {
-  const user = await requireAnyRole(["restaurant_staff", "admin"]);
+  const staff = await requireRestaurantStaffContext({
+    redirectPath: "/restaurant",
+  });
 
   if (!orderId) {
     redirect("/restaurant?error=order_required");
   }
 
-  const prisma = getPrisma();
-  const order = await prisma.order.findUnique({
-    where: { id: orderId },
-    select: {
-      id: true,
-      publicNumber: true,
-      restaurantId: true,
-      status: true,
-    },
+  const order = await getRestaurantOrderForStaffScope({
+    orderId,
+    restaurantId: staff.restaurantId,
   });
 
   if (!order) {
-    redirect("/restaurant?error=order_not_found");
-  }
-
-  const staff = await prisma.restaurantStaff.findFirst({
-    where: {
-      restaurantId: order.restaurantId,
-      userId: user.id,
-    },
-  });
-
-  if (!staff) {
     redirect("/restaurant?error=forbidden");
   }
 
-  return { order, user };
+  return { order, staff };
 }
 
 async function transitionRestaurantOrder(input: {
@@ -95,7 +85,7 @@ async function transitionRestaurantOrder(input: {
   dispatchCourier?: boolean;
 }) {
   const orderId = readString(input.formData, "orderId");
-  const { order, user } = await requireRestaurantOrder(orderId);
+  const { order, staff } = await requireRestaurantOrder(orderId);
 
   if (!input.allowedStatuses.includes(order.status)) {
     redirect("/restaurant?error=invalid_status");
@@ -105,6 +95,11 @@ async function transitionRestaurantOrder(input: {
   let deliveryIdForDispatch: string | null = null;
 
   await prisma.$transaction(async (tx) => {
+    const nextOrderPaymentStatus = input.paymentData
+      ? getOrderPaymentStatusAfterCancellation({
+          currentStatus: order.paymentStatus,
+        })
+      : undefined;
     const updated = await tx.order.updateMany({
       where: {
         id: order.id,
@@ -113,6 +108,7 @@ async function transitionRestaurantOrder(input: {
       },
       data: {
         status: input.nextStatus,
+        paymentStatus: nextOrderPaymentStatus,
         ...input.orderData,
       },
     });
@@ -150,7 +146,10 @@ async function transitionRestaurantOrder(input: {
 
     if (input.paymentData) {
       await tx.payment.updateMany({
-        where: { orderId: order.id },
+        where: {
+          orderId: order.id,
+          status: { in: [...cancellablePaymentStatuses] },
+        },
         data: input.paymentData,
       });
     }
@@ -160,14 +159,14 @@ async function transitionRestaurantOrder(input: {
         orderId: order.id,
         fromStatus: order.status,
         toStatus: input.nextStatus,
-        changedByUserId: user.id,
+        changedByUserId: staff.userId,
         comment: input.comment,
       },
     });
 
     await writeAuditLog({
       tx,
-      actorUserId: user.id,
+      actorUserId: staff.userId,
       entityType: "order",
       entityId: order.id,
       action: getRestaurantOrderAuditAction(input.nextStatus),
@@ -234,8 +233,11 @@ export async function acceptRestaurantOrderAction(formData: FormData) {
 }
 
 export async function rejectRestaurantOrderAction(formData: FormData) {
-  const restaurantComment =
-    readString(formData, "restaurantComment") || "Ресторан отклонил заказ.";
+  const restaurantComment = readString(formData, "restaurantComment");
+
+  if (!restaurantComment) {
+    redirect("/restaurant?error=reason_required");
+  }
 
   await transitionRestaurantOrder({
     formData,

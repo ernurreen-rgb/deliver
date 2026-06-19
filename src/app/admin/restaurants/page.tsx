@@ -19,7 +19,9 @@ const errorMessages: Record<string, string> = {
 export default async function AdminRestaurantsPage({
   searchParams,
 }: AdminRestaurantsPageProps) {
-  await requireAnyRole(["admin"]);
+  await requireAnyRole(["admin"], {
+    redirectPath: "/admin/restaurants",
+  });
 
   const params = await searchParams;
   const restaurants = await getAdminRestaurants();

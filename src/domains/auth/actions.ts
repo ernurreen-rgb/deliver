@@ -15,9 +15,11 @@ import {
   OTP_VERIFY_PHONE_LIMIT,
   OTP_VERIFY_RATE_LIMIT_ERROR,
   isDevOtpEnabled,
+  isDevOtpPhoneAllowed,
 } from "@/domains/auth/constants";
 import { safeCompareHash, sha256 } from "@/domains/auth/crypto";
 import { normalizePhone, isValidPhone } from "@/domains/auth/phone";
+import { buildLoginPath, sanitizeAuthRedirectPath } from "@/domains/auth/redirects";
 import { createSession, destroySession } from "@/domains/auth/session";
 import { getClientIp } from "@/lib/http/client-ip";
 import { consumeRateLimit } from "@/lib/rate-limit";
@@ -29,13 +31,18 @@ function readString(formData: FormData, key: string) {
 
 export async function requestOtpAction(formData: FormData) {
   const phone = normalizePhone(readString(formData, "phone"));
+  const nextPath = sanitizeAuthRedirectPath(readString(formData, "next"));
 
   if (!isValidPhone(phone)) {
-    redirect("/login?error=invalid_phone");
+    redirect(buildLoginPath({ error: "invalid_phone", nextPath }));
   }
 
   if (!isDevOtpEnabled()) {
-    redirect("/login?error=otp_provider_unavailable");
+    redirect(buildLoginPath({ error: "otp_provider_unavailable", nextPath }));
+  }
+
+  if (!isDevOtpPhoneAllowed(phone)) {
+    redirect(buildLoginPath({ error: "phone_not_allowed", nextPath, phone }));
   }
 
   const requestHeaders = await headers();
@@ -57,7 +64,7 @@ export async function requestOtpAction(formData: FormData) {
 
   if (!phoneLimit.allowed || !ipLimit.allowed) {
     redirect(
-      `/login?phone=${encodeURIComponent(phone)}&error=${OTP_REQUEST_RATE_LIMIT_ERROR}`,
+      buildLoginPath({ error: OTP_REQUEST_RATE_LIMIT_ERROR, nextPath, phone }),
     );
   }
 
@@ -85,15 +92,20 @@ export async function requestOtpAction(formData: FormData) {
     }),
   ]);
 
-  redirect(`/login?phone=${encodeURIComponent(phone)}&sent=1`);
+  redirect(buildLoginPath({ nextPath, phone, sent: true }));
 }
 
 export async function verifyOtpAction(formData: FormData) {
   const phone = normalizePhone(readString(formData, "phone"));
   const code = readString(formData, "code");
+  const nextPath = sanitizeAuthRedirectPath(readString(formData, "next"));
 
   if (!isValidPhone(phone) || !code) {
-    redirect("/login?error=invalid_code");
+    redirect(buildLoginPath({ error: "invalid_code", nextPath, phone }));
+  }
+
+  if (!isDevOtpPhoneAllowed(phone)) {
+    redirect(buildLoginPath({ error: "phone_not_allowed", nextPath, phone }));
   }
 
   const requestHeaders = await headers();
@@ -115,7 +127,7 @@ export async function verifyOtpAction(formData: FormData) {
 
   if (!phoneLimit.allowed || !ipLimit.allowed) {
     redirect(
-      `/login?phone=${encodeURIComponent(phone)}&error=${OTP_VERIFY_RATE_LIMIT_ERROR}`,
+      buildLoginPath({ error: OTP_VERIFY_RATE_LIMIT_ERROR, nextPath, phone }),
     );
   }
 
@@ -134,11 +146,11 @@ export async function verifyOtpAction(formData: FormData) {
   });
 
   if (!challenge) {
-    redirect(`/login?phone=${encodeURIComponent(phone)}&error=expired_code`);
+    redirect(buildLoginPath({ error: "expired_code", nextPath, phone }));
   }
 
   if (challenge.attemptCount >= OTP_MAX_ATTEMPTS) {
-    redirect(`/login?phone=${encodeURIComponent(phone)}&error=too_many_attempts`);
+    redirect(buildLoginPath({ error: "too_many_attempts", nextPath, phone }));
   }
 
   const isValidCode = safeCompareHash(sha256(code), challenge.codeHash);
@@ -154,7 +166,7 @@ export async function verifyOtpAction(formData: FormData) {
     const error =
       attemptCount >= OTP_MAX_ATTEMPTS ? "too_many_attempts" : "bad_code";
 
-    redirect(`/login?phone=${encodeURIComponent(phone)}&sent=1&error=${error}`);
+    redirect(buildLoginPath({ error, nextPath, phone, sent: true }));
   }
 
   const user = await getPrisma().$transaction(async (tx) => {
@@ -198,12 +210,12 @@ export async function verifyOtpAction(formData: FormData) {
   });
 
   if (user.status !== "active") {
-    redirect("/login?error=user_unavailable");
+    redirect(buildLoginPath({ error: "user_unavailable", nextPath }));
   }
 
   await createSession(user.id);
 
-  redirect("/account");
+  redirect(nextPath);
 }
 
 export async function logoutAction() {

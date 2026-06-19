@@ -1,3 +1,5 @@
+import type { RestaurantStaffContext } from "@/domains/auth/restaurant-staff-context";
+import { isMenuDemoImagePath } from "@/domains/menu/image-url";
 import { getPrisma } from "@/lib/db/prisma";
 import { formatKzt } from "@/lib/money/format";
 
@@ -14,26 +16,21 @@ function getDescriptionTranslation<
   return translations.find((translation) => translation.language === language);
 }
 
-export async function getRestaurantMenuManagement(userId: string) {
+export async function getRestaurantMenuManagement(context: RestaurantStaffContext) {
   const prisma = getPrisma();
 
-  const staff = await prisma.restaurantStaff.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: context.restaurantId },
     include: {
-      restaurant: {
+      translations: true,
+      menuCategories: {
+        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
         include: {
           translations: true,
-          menuCategories: {
+          items: {
             orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
             include: {
               translations: true,
-              items: {
-                orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-                include: {
-                  translations: true,
-                },
-              },
             },
           },
         },
@@ -41,20 +38,16 @@ export async function getRestaurantMenuManagement(userId: string) {
     },
   });
 
-  if (!staff) {
-    return null;
-  }
-
-  if (!staff.restaurant) {
+  if (!restaurant) {
     return null;
   }
 
   const restaurantRu = getDescriptionTranslation(
-    staff.restaurant.translations,
+    restaurant.translations,
     "ru",
   );
 
-  const categories = staff.restaurant.menuCategories.map((category) => {
+  const categories = restaurant.menuCategories.map((category) => {
     const ru = getTranslation(category.translations, "ru");
     const kk = getTranslation(category.translations, "kk");
 
@@ -80,7 +73,10 @@ export async function getRestaurantMenuManagement(userId: string) {
           price: item.price,
           priceKzt: Math.round(item.price / 100),
           formattedPrice: formatKzt(item.price),
-          imageUrl: item.imageUrl ?? "",
+          imageUrl:
+            item.imageUrl && isMenuDemoImagePath(item.imageUrl)
+              ? item.imageUrl
+              : "",
           sortOrder: item.sortOrder,
           isActive: item.isActive,
           isAvailable: item.isAvailable,
@@ -93,10 +89,10 @@ export async function getRestaurantMenuManagement(userId: string) {
 
   return {
     restaurant: {
-      id: staff.restaurant.id,
-      slug: staff.restaurant.slug,
-      name: restaurantRu?.name ?? staff.restaurant.slug,
-      role: staff.role,
+      id: restaurant.id,
+      slug: restaurant.slug,
+      name: restaurantRu?.name ?? restaurant.slug,
+      role: context.staffRole,
     },
     stats: {
       categories: categories.length,

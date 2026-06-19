@@ -4,6 +4,7 @@ import { useFormStatus } from "react-dom";
 import { useCart } from "@/domains/cart/use-cart";
 
 type CheckoutSubmitProps = {
+  checkoutRequestKey: string;
   hasAddress: boolean;
 };
 
@@ -30,13 +31,17 @@ function SubmitButton({
   );
 }
 
-export function CheckoutSubmit({ hasAddress }: CheckoutSubmitProps) {
+export function CheckoutSubmit({
+  checkoutRequestKey,
+  hasAddress,
+}: CheckoutSubmitProps) {
   const { items, isLoaded } = useCart();
   const cartPayload = JSON.stringify({ items });
   const isDisabled = !hasAddress || !isLoaded || items.length === 0;
 
   return (
     <div className="grid gap-3">
+      <input name="checkoutRequestKey" type="hidden" value={checkoutRequestKey} />
       <input name="cartPayload" type="hidden" value={cartPayload} />
       {!hasAddress ? (
         <div className="rounded-md border border-warning/30 bg-warning/10 p-3 text-sm text-warning">

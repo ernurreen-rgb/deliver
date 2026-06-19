@@ -183,11 +183,17 @@ export async function startDeliveryAction(formData: FormData) {
 
 export async function completeDeliveryAction(formData: FormData) {
   const deliveryId = readString(formData, "deliveryId");
+  const cashCollectedConfirmed =
+    readString(formData, "cashCollectedConfirmed", 10) === "on";
   const user = await requireCurrentUser();
   const now = new Date();
 
   if (!deliveryId) {
     redirect("/courier?error=delivery_required");
+  }
+
+  if (!cashCollectedConfirmed) {
+    redirect("/courier?error=cash_confirmation_required");
   }
 
   const result = await transitionCourierDeliveryForUser({
@@ -200,6 +206,7 @@ export async function completeDeliveryAction(formData: FormData) {
     deliveredAt: now,
     releaseCourier: true,
     settleFinances: true,
+    cashCollectedConfirmed: true,
     comment: "Courier completed delivery.",
   });
 
@@ -221,6 +228,10 @@ export async function releaseAssignedDeliveryAction(formData: FormData) {
 
   if (!deliveryId) {
     redirect("/courier?error=delivery_required");
+  }
+
+  if (!reason) {
+    redirect("/courier?error=reason_required");
   }
 
   const result = await releaseAssignedDeliveryForUser({

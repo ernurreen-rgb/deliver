@@ -2,6 +2,7 @@ import Link from "next/link";
 import { InfoTile } from "@/components/shared/info-tile";
 import { SurfaceShell } from "@/components/layout/surface-shell";
 import { requireAnyRole } from "@/domains/auth/authorization";
+import { getRestaurantStaffContextForUser } from "@/domains/auth/restaurant-staff-context";
 import {
   createMenuCategoryAction,
   createMenuItemAction,
@@ -30,7 +31,8 @@ const errorMessages: Record<string, string> = {
   category_not_found: "Категория не найдена.",
   category_required: "Выберите категорию.",
   input_too_long: "Текст слишком длинный.",
-  invalid_image_url: "Укажите корректную ссылку на фото: только https URL.",
+  invalid_image_url:
+    "Укажите локальный путь к фото: /images/demo/*.webp.",
   invalid_price: "Укажите корректную цену.",
   item_name_required: "Укажите название блюда.",
   item_not_found: "Блюдо не найдено.",
@@ -369,10 +371,13 @@ function CreateCategoryForm() {
 export default async function RestaurantMenuPage({
   searchParams,
 }: RestaurantMenuPageProps) {
-  const user = await requireAnyRole(["restaurant_staff", "admin"]);
+  const user = await requireAnyRole(["restaurant_staff", "admin"], {
+    redirectPath: "/restaurant/menu",
+  });
   const params = await searchParams;
+  const staff = await getRestaurantStaffContextForUser(user);
 
-  const dashboard = await getRestaurantMenuManagement(user.id);
+  const dashboard = staff ? await getRestaurantMenuManagement(staff) : null;
   const errorMessage = params.error ? errorMessages[params.error] : null;
   const updatedMessage = params.updated ? updatedMessages[params.updated] : null;
 

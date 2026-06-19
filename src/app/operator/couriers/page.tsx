@@ -325,7 +325,9 @@ function CourierCard({ courier }: { courier: CourierRow }) {
 export default async function CourierOperationsPage({
   searchParams,
 }: CourierOperationsPageProps) {
-  await requireAnyRole(["operator", "admin"]);
+  await requireAnyRole(["operator", "admin"], {
+    redirectPath: "/operator/couriers",
+  });
 
   const params = await searchParams;
   const dashboard = await getCourierOperationsDashboard();

@@ -1,6 +1,6 @@
 import { getPrisma } from "@/lib/db/prisma";
 import { formatKzt } from "@/lib/money/format";
-import { expireCourierOffers } from "@/domains/delivery/dispatch";
+import type { RestaurantStaffContext } from "@/domains/auth/restaurant-staff-context";
 import {
   OPERATOR_CANCELLED_AFTER_PICKUP_REVIEW_ACTION,
   OPERATOR_RESOLVED_FINANCIAL_REVIEW_ACTION,
@@ -10,7 +10,7 @@ import {
   minutesSince,
 } from "@/domains/orders/operator-attention";
 import { buildOrderTimeline } from "@/domains/orders/timeline";
-import type { OrderStatus } from "@/generated/prisma/enums";
+import type { DeliveryStatus, OrderStatus } from "@/generated/prisma/enums";
 
 export function getOrderStatusLabel(status: string) {
   const labels: Record<string, string> = {
@@ -63,6 +63,132 @@ export function getDeliveryStatusLabel(status: string) {
   };
 
   return labels[status] ?? status;
+}
+
+function formatOperationalAgeLabel(minutes: number) {
+  if (minutes < 1) {
+    return "только что";
+  }
+
+  if (minutes < 60) {
+    return `${minutes} мин`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+
+  return remainder > 0 ? `${hours} ч ${remainder} мин` : `${hours} ч`;
+}
+
+function formatTimeLeftLabel(date: Date, now: Date) {
+  const minutes = Math.max(0, Math.ceil((date.getTime() - now.getTime()) / 60_000));
+
+  if (minutes < 1) {
+    return "меньше минуты";
+  }
+
+  return formatOperationalAgeLabel(minutes);
+}
+
+function getRestaurantActionState(input: {
+  status: OrderStatus;
+  statusAgeMinutes: number;
+}) {
+  if (input.status === "pending_confirmation") {
+    return {
+      label: "Нужно принять",
+      tone: input.statusAgeMinutes >= 5 ? "warning" : "accent",
+      sortWeight: 0,
+    } as const;
+  }
+
+  if (input.status === "accepted" || input.status === "courier_assigned") {
+    return {
+      label: "Начать готовить",
+      tone: input.statusAgeMinutes >= 10 ? "warning" : "default",
+      sortWeight: 1,
+    } as const;
+  }
+
+  if (input.status === "preparing") {
+    return {
+      label: "Отметить готовность",
+      tone: input.statusAgeMinutes >= 30 ? "warning" : "default",
+      sortWeight: 2,
+    } as const;
+  }
+
+  if (input.status === "ready_for_pickup") {
+    return {
+      label: "Ждет выдачу",
+      tone: input.statusAgeMinutes >= 10 ? "warning" : "accent",
+      sortWeight: 3,
+    } as const;
+  }
+
+  return {
+    label: "Наблюдать",
+    tone: "default",
+    sortWeight: 4,
+  } as const;
+}
+
+function getCourierDeliveryActionState(input: {
+  deliveryStatus: DeliveryStatus;
+  orderStatus: OrderStatus;
+  ageMinutes: number;
+}) {
+  if (
+    input.deliveryStatus === "assigned" &&
+    input.orderStatus === "ready_for_pickup"
+  ) {
+    return {
+      label: "Забрать у ресторана",
+      detail: "Заказ готов, курьер должен забрать его у ресторана.",
+      tone: input.ageMinutes >= 10 ? "warning" : "accent",
+      sortWeight: 0,
+    } as const;
+  }
+
+  if (input.deliveryStatus === "assigned") {
+    return {
+      label: "Ждать готовность",
+      detail: "Курьер назначен, но ресторан еще не отметил заказ готовым.",
+      tone: input.ageMinutes >= 30 ? "warning" : "default",
+      sortWeight: 1,
+    } as const;
+  }
+
+  if (
+    input.deliveryStatus === "picked_up" &&
+    input.orderStatus === "picked_up"
+  ) {
+    return {
+      label: "Начать путь",
+      detail: "Заказ уже у курьера, нужно начать доставку клиенту.",
+      tone: input.ageMinutes >= 10 ? "warning" : "accent",
+      sortWeight: 2,
+    } as const;
+  }
+
+  if (
+    input.deliveryStatus === "delivering" &&
+    input.orderStatus === "delivering"
+  ) {
+    return {
+      label: "Закрыть доставку",
+      detail: "Курьер в пути к клиенту. После передачи заказа нужно закрыть доставку.",
+      tone: input.ageMinutes >= 45 ? "warning" : "accent",
+      sortWeight: 3,
+    } as const;
+  }
+
+  return {
+    label: "Наблюдать",
+    detail: "Следующее действие зависит от статуса заказа и доставки.",
+    tone: "default",
+    sortWeight: 4,
+  } as const;
 }
 
 function formatOrderAddress(
@@ -328,9 +454,9 @@ export async function getCustomerOrderByPublicNumber(input: {
   };
 }
 
-export async function getRestaurantDashboard(userId: string) {
+export async function getRestaurantDashboard(context: RestaurantStaffContext) {
   const prisma = getPrisma();
-  await expireCourierOffers();
+  const now = new Date();
 
   const activeStatuses: OrderStatus[] = [
     "pending_confirmation",
@@ -340,27 +466,22 @@ export async function getRestaurantDashboard(userId: string) {
     "courier_assigned",
   ];
 
-  const staff = await prisma.restaurantStaff.findFirst({
-    where: { userId },
-    orderBy: { createdAt: "asc" },
+  const restaurant = await prisma.restaurant.findUnique({
+    where: { id: context.restaurantId },
     include: {
-      restaurant: {
-        include: {
-          translations: true,
-          balance: true,
-        },
-      },
+      translations: true,
+      balance: true,
     },
   });
 
-  if (!staff) {
+  if (!restaurant) {
     return null;
   }
 
-  const restaurantRu = staff.restaurant.translations.find(
+  const restaurantRu = restaurant.translations.find(
     (translation) => translation.language === "ru",
   );
-  const restaurantId = staff.restaurantId;
+  const restaurantId = context.restaurantId;
 
   const [
     newOrders,
@@ -483,11 +604,11 @@ export async function getRestaurantDashboard(userId: string) {
 
   return {
     restaurant: {
-      id: staff.restaurant.id,
-      name: restaurantRu?.name ?? staff.restaurant.slug,
-      addressLine: staff.restaurant.addressLine,
-      role: staff.role,
-      balance: formatKzt(staff.restaurant.balance?.balance ?? 0),
+      id: restaurant.id,
+      name: restaurantRu?.name ?? restaurant.slug,
+      addressLine: restaurant.addressLine,
+      role: context.staffRole,
+      balance: formatKzt(restaurant.balance?.balance ?? 0),
     },
     stats: {
       newOrders,
@@ -506,7 +627,19 @@ export async function getRestaurantDashboard(userId: string) {
           ? `Ожидает ответа курьера: ${offeredCourierName ?? "курьер"}`
           : order.status === "pending_confirmation"
             ? "Диспетчеризация начнется после принятия"
-            : "Курьер не назначен";
+          : "Курьер не назначен";
+      const currentStatusStartedAt =
+        order.statusHistory
+          .slice()
+          .reverse()
+          .find((event) => event.toStatus === order.status)?.createdAt ??
+        order.acceptedAt ??
+        order.createdAt;
+      const statusAgeMinutes = minutesSince(currentStatusStartedAt, now);
+      const restaurantAction = getRestaurantActionState({
+        status: order.status,
+        statusAgeMinutes,
+      });
       const addressParts = order.deliveryAddress
         ? [
             `${order.deliveryAddress.city}, ${order.deliveryAddress.addressLine}`,
@@ -541,6 +674,11 @@ export async function getRestaurantDashboard(userId: string) {
         status: order.status,
         statusLabel: getOrderStatusLabel(order.status),
         createdAt: order.createdAt,
+        currentStatusStartedAt,
+        statusAgeLabel: formatOperationalAgeLabel(statusAgeMinutes),
+        restaurantActionLabel: restaurantAction.label,
+        restaurantActionTone: restaurantAction.tone,
+        restaurantActionSortWeight: restaurantAction.sortWeight,
         customerName: order.customer.name ?? order.customer.phone,
         customerPhone: order.customer.phone,
         customerComment: order.customerComment,
@@ -576,7 +714,6 @@ export async function getRestaurantDashboard(userId: string) {
 export async function getOperatorOrders() {
   const prisma = getPrisma();
   const now = new Date();
-  await expireCourierOffers();
   const financialReviewRequiredLogs = await prisma.auditLog.findMany({
     where: {
       entityType: "order",
@@ -736,7 +873,9 @@ export async function getOperatorOrders() {
     );
     const latestOffer = order.delivery?.offers[0] ?? null;
     const pendingOffer =
-      latestOffer?.status === "pending" ? latestOffer : null;
+      latestOffer?.status === "pending" && latestOffer.expiresAt > now
+        ? latestOffer
+        : null;
     const assignedCourierName = order.delivery?.courier?.profile?.fullName;
     const orderAuditLogs = auditLogsByEntityId.get(order.id) ?? [];
     const deliveryAuditLogs = order.delivery
@@ -899,10 +1038,150 @@ export async function getOperatorAvailableCouriers() {
   `;
 }
 
+export async function getOperatorPilotJournal() {
+  const prisma = getPrisma();
+  const now = new Date();
+  const recentOrders = await prisma.order.findMany({
+    where: {
+      customer: { phone: "+77000000002" },
+      paymentMethod: "cash_to_courier",
+      restaurant: { slug: "tengri-kitchen" },
+    },
+    orderBy: { createdAt: "desc" },
+    take: 12,
+    include: {
+      customer: {
+        select: {
+          name: true,
+          phone: true,
+        },
+      },
+      delivery: {
+        include: {
+          courier: {
+            include: {
+              profile: true,
+            },
+          },
+        },
+      },
+      deliveryAddress: true,
+      financials: true,
+      restaurant: {
+        include: {
+          translations: true,
+        },
+      },
+    },
+  });
+
+  const activeOrders = recentOrders.filter(
+    (order) => order.status !== "delivered" && order.status !== "cancelled",
+  );
+  const deliveredOrders = recentOrders.filter(
+    (order) => order.status === "delivered",
+  );
+  const cancelledOrders = recentOrders.filter(
+    (order) => order.status === "cancelled",
+  );
+  const cashOrders = recentOrders.filter(
+    (order) => order.paymentMethod === "cash_to_courier",
+  );
+  const cashCollectedAmount = cashOrders
+    .filter((order) => order.paymentStatus === "paid")
+    .reduce((sum, order) => sum + (order.financials?.customerTotal ?? 0), 0);
+  const cashInProgressAmount = cashOrders
+    .filter(
+      (order) =>
+        order.paymentStatus !== "paid" &&
+        order.status !== "cancelled" &&
+        order.status !== "delivered",
+    )
+    .reduce((sum, order) => sum + (order.financials?.customerTotal ?? 0), 0);
+  const platformRevenueAmount = deliveredOrders.reduce(
+    (sum, order) => sum + (order.financials?.platformRevenue ?? 0),
+    0,
+  );
+
+  return {
+    stats: {
+      recentCount: recentOrders.length,
+      activeCount: activeOrders.length,
+      deliveredCount: deliveredOrders.length,
+      cancelledCount: cancelledOrders.length,
+      cashCollected: formatKzt(cashCollectedAmount),
+      cashInProgress: formatKzt(cashInProgressAmount),
+      platformRevenue: formatKzt(platformRevenueAmount),
+    },
+    orders: recentOrders.map((order) => {
+      const restaurantRu = order.restaurant.translations.find(
+        (translation) => translation.language === "ru",
+      );
+      const courierName = order.delivery?.courier?.profile?.fullName;
+      const isActive =
+        order.status !== "delivered" && order.status !== "cancelled";
+      const needsPaymentAttention =
+        order.paymentMethod === "cash_to_courier" &&
+        order.status === "delivered" &&
+        order.paymentStatus !== "paid";
+      const needsStatusAttention =
+        isActive &&
+        minutesSince(order.updatedAt, now) >=
+          (order.status === "pending_confirmation" ? 5 : 30);
+      const cashState =
+        order.paymentMethod !== "cash_to_courier"
+          ? getPaymentMethodLabel(order.paymentMethod)
+          : order.paymentStatus === "paid"
+            ? "Наличные закрыты"
+            : order.status === "cancelled"
+              ? "Наличные не нужны"
+              : "Наличные в процессе";
+
+      return {
+        id: order.id,
+        number: order.publicNumber,
+        createdAt: order.createdAt,
+        ageLabel: formatOperationalAgeLabel(minutesSince(order.createdAt, now)),
+        restaurant: restaurantRu?.name ?? order.restaurant.slug,
+        customer: order.customer.name ?? order.customer.phone,
+        customerPhone: order.customer.phone,
+        address: formatOrderAddress(order.deliveryAddress),
+        status: order.status,
+        statusLabel: getOrderStatusLabel(order.status),
+        deliveryStatus: order.delivery?.status ?? null,
+        deliveryStatusLabel: order.delivery
+          ? getDeliveryStatusLabel(order.delivery.status)
+          : "Нет доставки",
+        paymentMethodLabel: getPaymentMethodLabel(order.paymentMethod),
+        paymentStatusLabel: getPaymentStatusLabel(order.paymentStatus),
+        cashState,
+        total: order.financials ? formatKzt(order.financials.customerTotal) : "-",
+        restaurantPayout: order.financials
+          ? formatKzt(order.financials.restaurantPayout)
+          : "-",
+        courierEarning: order.financials
+          ? formatKzt(order.financials.courierEarning)
+          : "-",
+        platformRevenue: order.financials
+          ? formatKzt(order.financials.platformRevenue)
+          : "-",
+        courier: courierName ?? "Не назначен",
+        needsAttention: needsPaymentAttention || needsStatusAttention,
+        attentionLabel: needsPaymentAttention
+          ? "Проверить оплату"
+          : needsStatusAttention
+            ? "Проверить зависание"
+            : isActive
+              ? "В работе"
+              : "Закрыт",
+      };
+    }),
+  };
+}
+
 export async function getCourierDashboard(userId: string) {
   const prisma = getPrisma();
   const now = new Date();
-  await expireCourierOffers(now);
 
   const courier = await prisma.courier.findUnique({
     where: { userId },
@@ -921,6 +1200,12 @@ export async function getCourierDashboard(userId: string) {
             include: {
               order: {
                 include: {
+                  customer: {
+                    select: {
+                      name: true,
+                      phone: true,
+                    },
+                  },
                   deliveryAddress: true,
                   financials: true,
                   items: true,
@@ -945,6 +1230,12 @@ export async function getCourierDashboard(userId: string) {
         include: {
           order: {
             include: {
+              customer: {
+                select: {
+                  name: true,
+                  phone: true,
+                },
+              },
               deliveryAddress: true,
               financials: true,
               items: true,
@@ -989,11 +1280,15 @@ export async function getCourierDashboard(userId: string) {
       return {
         id: offer.id,
         sequence: offer.sequence,
+        offeredAt: offer.offeredAt,
         expiresAt: offer.expiresAt,
+        expiresInLabel: formatTimeLeftLabel(offer.expiresAt, now),
         orderNumber: order.publicNumber,
         restaurant: restaurantRu?.name ?? order.restaurant.slug,
         restaurantAddress: order.restaurant.addressLine,
         deliveryAddress: formatOrderAddress(order.deliveryAddress),
+        customerName: order.customer.name ?? order.customer.phone,
+        customerPhone: order.customer.phone,
         customerTotal: order.financials
           ? formatKzt(order.financials.customerTotal)
           : "-",
@@ -1008,6 +1303,18 @@ export async function getCourierDashboard(userId: string) {
       const restaurantRu = order.restaurant.translations.find(
         (translation) => translation.language === "ru",
       );
+      const actionStartedAt =
+        delivery.status === "assigned"
+          ? (delivery.assignedAt ?? delivery.updatedAt)
+          : delivery.status === "picked_up"
+            ? (delivery.pickedUpAt ?? delivery.updatedAt)
+            : delivery.updatedAt;
+      const actionAgeMinutes = minutesSince(actionStartedAt, now);
+      const actionState = getCourierDeliveryActionState({
+        deliveryStatus: delivery.status,
+        orderStatus: order.status,
+        ageMinutes: actionAgeMinutes,
+      });
 
       return {
         id: delivery.id,
@@ -1016,10 +1323,18 @@ export async function getCourierDashboard(userId: string) {
         orderStatus: order.status,
         orderStatusLabel: getOrderStatusLabel(order.status),
         assignedAt: delivery.assignedAt,
+        currentActionStartedAt: actionStartedAt,
+        currentActionAgeLabel: formatOperationalAgeLabel(actionAgeMinutes),
+        actionLabel: actionState.label,
+        actionDetail: actionState.detail,
+        actionTone: actionState.tone,
+        actionSortWeight: actionState.sortWeight,
         orderNumber: order.publicNumber,
         restaurant: restaurantRu?.name ?? order.restaurant.slug,
         restaurantAddress: order.restaurant.addressLine,
         deliveryAddress: formatOrderAddress(order.deliveryAddress),
+        customerName: order.customer.name ?? order.customer.phone,
+        customerPhone: order.customer.phone,
         customerTotal: order.financials
           ? formatKzt(order.financials.customerTotal)
           : "-",

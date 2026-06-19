@@ -1,4 +1,7 @@
-import { runDispatchTick } from "@/domains/delivery/dispatch-job";
+import {
+  isDispatchTickDryRunEnabled,
+  runDispatchTick,
+} from "@/domains/delivery/dispatch-job";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,7 +29,8 @@ export async function GET(request: Request) {
     return Response.json({ error: auth.error }, { status: auth.status });
   }
 
-  const summary = await runDispatchTick();
+  const dryRun = isDispatchTickDryRunEnabled(new URL(request.url).searchParams);
+  const summary = await runDispatchTick({ dryRun });
 
   return Response.json({ ok: true, summary });
 }

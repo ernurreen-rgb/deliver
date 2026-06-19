@@ -160,6 +160,19 @@ function getCurrentAndNextStep(input: BuildOrderTimelineInput) {
     };
   }
 
+  if (input.order.status === "pending_confirmation") {
+    return {
+      currentStep: {
+        title: "Ждем ресторан",
+        detail: "Ресторан должен принять или отклонить заказ.",
+      },
+      nextStep: {
+        title: "Ресторан подтверждает заказ",
+        detail: "После подтверждения начнется приготовление и поиск курьера.",
+      },
+    };
+  }
+
   if (deliveryStatus === "pending_assignment" && hasPendingOffer) {
     return {
       currentStep: {
@@ -182,19 +195,6 @@ function getCurrentAndNextStep(input: BuildOrderTimelineInput) {
       nextStep: {
         title: "Назначить курьера",
         detail: "Автоназначение или оператор закрепит доступного курьера.",
-      },
-    };
-  }
-
-  if (input.order.status === "pending_confirmation") {
-    return {
-      currentStep: {
-        title: "Ждем ресторан",
-        detail: "Ресторан должен принять или отклонить заказ.",
-      },
-      nextStep: {
-        title: "Ресторан подтверждает заказ",
-        detail: "После подтверждения начнется приготовление и поиск курьера.",
       },
     };
   }

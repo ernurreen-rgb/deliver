@@ -1,3 +1,5 @@
+import { isMenuDemoImagePath } from "@/domains/menu/image-url";
+import { getRestaurantCoverImageUrl } from "@/domains/restaurants/media";
 import { getPrisma } from "@/lib/db/prisma";
 import { formatKzt } from "@/lib/money/format";
 
@@ -33,6 +35,7 @@ export async function getStorefrontRestaurants() {
       id: restaurant.id,
       slug: restaurant.slug,
       name: ru?.name ?? restaurant.slug,
+      coverImageUrl: getRestaurantCoverImageUrl(restaurant.slug),
       category: category?.name ?? "Ресторан",
       eta: "30-45 мин",
       distance: restaurant.deliveryRadiusMeters
@@ -85,6 +88,7 @@ export async function getRestaurantMenu(slug: string) {
     id: restaurant.id,
     slug: restaurant.slug,
     name: restaurantRu?.name ?? restaurant.slug,
+    coverImageUrl: getRestaurantCoverImageUrl(restaurant.slug),
     description: restaurantRu?.description,
     minimumOrder: formatKzt(restaurant.minimumOrderAmount),
     deliveryRadius: restaurant.deliveryRadiusMeters
@@ -107,6 +111,10 @@ export async function getRestaurantMenu(slug: string) {
             id: item.id,
             name: itemRu?.name ?? "Блюдо",
             description: itemRu?.description,
+            imageUrl:
+              item.imageUrl && isMenuDemoImagePath(item.imageUrl)
+                ? item.imageUrl
+                : null,
             price: item.price,
             formattedPrice: formatKzt(item.price),
             currency: "KZT" as const,

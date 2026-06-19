@@ -13,6 +13,10 @@ import {
   isFinancialReviewResolution,
   type FinancialReviewResolution,
 } from "@/domains/finance/manual-review";
+import {
+  cancellablePaymentStatuses,
+  getOrderPaymentStatusAfterCancellation,
+} from "@/domains/finance/payment-status";
 import { getPrisma } from "@/lib/db/prisma";
 
 const activeDeliveryStatuses = ["assigned", "picked_up", "delivering"] as const;
@@ -677,9 +681,15 @@ async function cancelOrderByOperator(input: {
       }
 
       const requiresFinancialReview = needsFinancialReviewAfterCancel(order);
+      const nextOrderPaymentStatus = getOrderPaymentStatusAfterCancellation({
+        currentStatus: order.paymentStatus,
+        requiresFinancialReview,
+      });
       const paymentAction = requiresFinancialReview
         ? "left_pending_for_manual_financial_review"
-        : "cancelled_pending_authorized_payments";
+        : nextOrderPaymentStatus
+          ? "cancelled_pending_authorized_payments"
+          : "left_terminal_payment_status_unchanged";
 
       const orderUpdate = await tx.order.updateMany({
         where: {
@@ -690,6 +700,7 @@ async function cancelOrderByOperator(input: {
           status: "cancelled",
           cancelledAt: now,
           restaurantComment: input.reason,
+          paymentStatus: nextOrderPaymentStatus,
         },
       });
 
@@ -740,7 +751,7 @@ async function cancelOrderByOperator(input: {
         await tx.payment.updateMany({
           where: {
             orderId: order.id,
-            status: { in: ["pending", "authorized"] },
+            status: { in: [...cancellablePaymentStatuses] },
           },
           data: {
             status: "cancelled",
@@ -875,7 +886,7 @@ async function resolveFinancialReview(input: {
         await tx.payment.updateMany({
           where: {
             orderId: order.id,
-            status: { in: ["pending", "authorized"] },
+            status: { in: [...cancellablePaymentStatuses] },
           },
           data: {
             status: "cancelled",
@@ -885,7 +896,7 @@ async function resolveFinancialReview(input: {
         await tx.order.updateMany({
           where: {
             id: order.id,
-            paymentStatus: { in: ["pending", "authorized"] },
+            paymentStatus: { in: [...cancellablePaymentStatuses] },
           },
           data: {
             paymentStatus: "cancelled",

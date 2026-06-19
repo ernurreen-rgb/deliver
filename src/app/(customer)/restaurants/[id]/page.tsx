@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { notFound } from "next/navigation";
 import { AddToCartButton } from "@/components/cart/add-to-cart-button";
 import { CartSummary } from "@/components/cart/cart-summary";
@@ -26,7 +27,20 @@ export default async function RestaurantPage({ params }: RestaurantPageProps) {
         `Минимальный заказ ${restaurant.minimumOrder}. Радиус доставки: ${restaurant.deliveryRadius}.`
       }
     >
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      {restaurant.coverImageUrl ? (
+        <div className="relative aspect-[16/7] min-h-56 overflow-hidden rounded-lg bg-surface-muted">
+          <Image
+            fill
+            src={restaurant.coverImageUrl}
+            alt={`${restaurant.name}: блюда ресторана`}
+            sizes="(max-width: 1280px) 100vw, 1216px"
+            className="object-cover"
+            preload
+          />
+        </div>
+      ) : null}
+
+      <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_320px]">
         <div className="grid gap-5">
           {restaurant.categories.map((category) => (
             <section
@@ -39,8 +53,23 @@ export default async function RestaurantPage({ params }: RestaurantPageProps) {
                   category.items.map((item) => (
                     <article
                       key={item.id}
-                      className="grid gap-4 rounded-lg border border-border bg-background p-4 sm:grid-cols-[1fr_auto]"
+                      className={`grid gap-4 rounded-lg border border-border bg-background p-4 ${
+                        item.imageUrl
+                          ? "sm:grid-cols-[112px_minmax(0,1fr)_auto]"
+                          : "sm:grid-cols-[minmax(0,1fr)_auto]"
+                      }`}
                     >
+                      {item.imageUrl ? (
+                        <div className="relative aspect-[4/3] overflow-hidden rounded-md bg-surface-muted sm:aspect-square">
+                          <Image
+                            fill
+                            src={item.imageUrl}
+                            alt={item.name}
+                            sizes="(max-width: 640px) 100vw, 112px"
+                            className="object-cover"
+                          />
+                        </div>
+                      ) : null}
                       <div>
                         <h3 className="font-semibold">{item.name}</h3>
                         {item.description ? (

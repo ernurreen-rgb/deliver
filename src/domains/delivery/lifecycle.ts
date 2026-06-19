@@ -20,6 +20,7 @@ type CourierDeliveryTransitionInput = {
   deliveredAt?: Date;
   releaseCourier?: boolean;
   settleFinances?: boolean;
+  cashCollectedConfirmed?: boolean;
 };
 
 const releasableAssignedOrderStatuses = [
@@ -175,6 +176,7 @@ export async function transitionCourierDeliveryForUser(
           fromOrderStatus: input.orderFromStatus,
           toOrderStatus: input.orderToStatus,
           settleFinances: input.settleFinances ?? false,
+          cashCollectedConfirmed: input.cashCollectedConfirmed ?? false,
           releaseCourier: input.releaseCourier ?? false,
         },
       });
