@@ -18,7 +18,7 @@ concurrency:
 
 jobs:
   quality:
-    name: Lint, test, build
+    name: Lint, test, build, smoke
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
@@ -45,6 +45,8 @@ jobs:
       NEXT_PUBLIC_TWOGIS_MAP_KEY: ""
       OTP_PROVIDER: dev
       PRISMA_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/deliver?schema=public
+      RELEASE_DATABASE_TAG: local
+      RELEASE_TARGET: local
       TWOGIS_API_KEY: ""
 
     steps:
@@ -67,6 +69,35 @@ jobs:
       - name: Apply migrations
         run: npm run db:migrate:deploy
 
+      - name: Seed smoke fixtures
+        run: npm run db:seed
+
+      - name: Check release environment
+        run: npm run release:check-env
+
+      - name: Check staging release environment
+        env:
+          CLOSED_PILOT_OTP_ENABLED: "true"
+          CLOSED_PILOT_OTP_PHONE_ALLOWLIST: "+77000000001,+77000000002,+77000000003"
+          DATABASE_URL: postgresql://deliver:ci@ep-deliver-pooler.eu-central-1.aws.neon.tech/deliver?sslmode=require
+          PRISMA_DATABASE_URL: postgresql://deliver:ci@ep-deliver.eu-central-1.aws.neon.tech/deliver?sslmode=require
+          RELEASE_DATABASE_TAG: staging
+          VERCEL_ACCOUNT_PLAN: pro
+        run: npm run release:check-env -- --target staging
+
+      - name: Check production release environment
+        env:
+          CLOSED_PILOT_OTP_ENABLED: "true"
+          CLOSED_PILOT_OTP_PHONE_ALLOWLIST: "+77000000001,+77000000002,+77000000003"
+          DATABASE_URL: postgresql://deliver:ci@ep-deliver-pooler.eu-central-1.aws.neon.tech/deliver?sslmode=require
+          PRISMA_DATABASE_URL: postgresql://deliver:ci@ep-deliver.eu-central-1.aws.neon.tech/deliver?sslmode=require
+          RELEASE_DATABASE_TAG: production
+          VERCEL_ACCOUNT_PLAN: pro
+        run: npm run release:check-env:production
+
+      - name: Check application boundaries
+        run: npm run architecture:check
+
       - name: Lint
         run: npm run lint
 
@@ -75,3 +106,6 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Cash-order smoke
+        run: npm run smoke:cash-order

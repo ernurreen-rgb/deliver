@@ -32,6 +32,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 dev-server*.log
+.next-dev*.log
+.local-logs/
+.pilot-evidence/
 
 # env files (can opt-in for committing if needed)
 .env*
