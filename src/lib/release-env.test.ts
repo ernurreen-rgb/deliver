@@ -180,6 +180,34 @@ describe("validateReleaseEnv", () => {
     );
   });
 
+  it("allows Hobby cron limits only for staging preview deployments", () => {
+    const baseEnv = {
+      ...launchDatabaseEnv,
+      CRON_SECRET: "secret",
+      GEO_PROVIDER: "dev",
+      OTP_PROVIDER: "dev",
+      [RELEASE_TARGET_ENV]: "staging",
+      [RELEASE_DATABASE_TAG_ENV]: "staging",
+      [VERCEL_ACCOUNT_PLAN_ENV]: "hobby",
+      [CLOSED_PILOT_OTP_ENABLED_ENV]: "true",
+      [CLOSED_PILOT_OTP_PHONE_ALLOWLIST_ENV]: "+77000000001",
+    };
+
+    expect(
+      validateReleaseEnv({
+        ...baseEnv,
+        VERCEL_ENV: "preview",
+      }).ok,
+    ).toBe(true);
+
+    const nonPreviewResult = validateReleaseEnv(baseEnv);
+
+    expect(nonPreviewResult.ok).toBe(false);
+    expect(nonPreviewResult.checks).toContainEqual(
+      expect.objectContaining({ name: VERCEL_ACCOUNT_PLAN_ENV, ok: false }),
+    );
+  });
+
   it("requires the database tag to match launch release targets", () => {
     const baseEnv = {
       ...launchDatabaseEnv,

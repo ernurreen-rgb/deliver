@@ -423,6 +423,10 @@ function normalizeVercelAccountPlan(value: string | undefined) {
   return value?.trim().toLowerCase();
 }
 
+function isVercelPreviewEnvironment(env: ReleaseEnv) {
+  return env.VERCEL_ENV?.trim().toLowerCase() === "preview";
+}
+
 function parseSingleCronNumber(input: string, min: number, max: number) {
   if (!/^\d+$/.test(input)) {
     return null;
@@ -509,6 +513,16 @@ function checkDispatchCronPlan(
   const normalizedPlan = plan as VercelAccountPlan;
 
   if (normalizedPlan === "hobby" && !hobbyCompatible) {
+    if (target === "staging" && isVercelPreviewEnvironment(env)) {
+      return [
+        {
+          name: VERCEL_ACCOUNT_PLAN_ENV,
+          ok: true,
+          message: `Vercel preview deployments do not register cron jobs; production dispatch still requires Pro/Enterprise for "${schedule}".`,
+        },
+      ];
+    }
+
     return [
       {
         name: VERCEL_ACCOUNT_PLAN_ENV,
