@@ -113,10 +113,6 @@ async function runStep(step: CommandStep) {
   });
 }
 
-function quoteWindowsArg(value: string) {
-  return `"${value.replaceAll('"', '\\"')}"`;
-}
-
 function spawnCommand(
   command: string,
   args: string[],
@@ -126,16 +122,18 @@ function spawnCommand(
     stdio: "inherit" | ["ignore", "pipe", "pipe"];
   },
 ) {
-  if (process.platform !== "win32") {
-    return spawn(command, args, {
-      ...options,
-      windowsHide: true,
-    });
-  }
+  const isWindowsCommandShim =
+    process.platform === "win32" && command.toLowerCase().endsWith(".cmd");
+  const executable = isWindowsCommandShim
+    ? process.env.ComSpec || "cmd.exe"
+    : command;
+  const executableArgs = isWindowsCommandShim
+    ? ["/d", "/s", "/c", command, ...args]
+    : args;
 
-  return spawn([command, ...args.map(quoteWindowsArg)].join(" "), [], {
+  return spawn(executable, executableArgs, {
     ...options,
-    shell: true,
+    shell: false,
     windowsHide: true,
   });
 }

@@ -22,19 +22,7 @@ function getDeploymentIdentity(request: NextRequest) {
   return {
     requestHost: request.nextUrl.host,
     vercel: process.env.VERCEL === "1",
-    vercelBranchUrl: process.env.VERCEL_BRANCH_URL || null,
-    vercelDeploymentId: process.env.VERCEL_DEPLOYMENT_ID || null,
-    vercelEnv: process.env.VERCEL_ENV || null,
-    vercelGitCommitRef: process.env.VERCEL_GIT_COMMIT_REF || null,
-    vercelGitCommitSha: process.env.VERCEL_GIT_COMMIT_SHA || null,
-    vercelGitRepoOwner: process.env.VERCEL_GIT_REPO_OWNER || null,
-    vercelGitRepoSlug: process.env.VERCEL_GIT_REPO_SLUG || null,
     vercelProjectId: process.env.VERCEL_PROJECT_ID || null,
-    vercelProjectProductionUrl:
-      process.env.VERCEL_PROJECT_PRODUCTION_URL || null,
-    vercelRegion: process.env.VERCEL_REGION || null,
-    vercelTargetEnv: process.env.VERCEL_TARGET_ENV || null,
-    vercelUrl: process.env.VERCEL_URL || null,
   };
 }
 

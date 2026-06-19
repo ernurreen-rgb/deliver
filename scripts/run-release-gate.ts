@@ -21,37 +21,25 @@ function npmCommand() {
   return process.platform === "win32" ? "npm.cmd" : "npm";
 }
 
-function quoteWindowsArg(value: string) {
-  return `"${value.replaceAll('"', '\\"')}"`;
-}
-
 function spawnNpm(args: string[]) {
-  if (process.platform !== "win32") {
-    return spawn(npmCommand(), args, {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        RELEASE_TARGET: "production",
-      },
-      stdio: "inherit",
-      windowsHide: true,
-    });
-  }
+  const npm = npmCommand();
+  const command = process.platform === "win32"
+    ? process.env.ComSpec || "cmd.exe"
+    : npm;
+  const commandArgs = process.platform === "win32"
+    ? ["/d", "/s", "/c", npm, ...args]
+    : args;
 
-  return spawn(
-    [npmCommand(), ...args.map(quoteWindowsArg)].join(" "),
-    [],
-    {
-      cwd: process.cwd(),
-      env: {
-        ...process.env,
-        RELEASE_TARGET: "production",
-      },
-      shell: true,
-      stdio: "inherit",
-      windowsHide: true,
+  return spawn(command, commandArgs, {
+    cwd: process.cwd(),
+    env: {
+      ...process.env,
+      RELEASE_TARGET: "production",
     },
-  );
+    shell: false,
+    stdio: "inherit",
+    windowsHide: true,
+  });
 }
 
 async function runStep(step: GateStep) {

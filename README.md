@@ -18,6 +18,11 @@ Default local setup:
 - Database: `deliver`
 - URL: `postgresql://postgres:postgres@localhost:5432/deliver?schema=public`
 
+These are workstation defaults, not repository requirements. Override them with
+`DELIVER_POSTGRES_BIN`, `DELIVER_POSTGRES_DATA`,
+`DELIVER_POSTGRES_SERVICE`, `DELIVER_POSTGRES_HOST` and
+`DELIVER_POSTGRES_PORT` when PostgreSQL is installed elsewhere.
+
 Useful commands:
 
 ```bash
