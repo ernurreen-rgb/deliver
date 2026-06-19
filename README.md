@@ -132,7 +132,11 @@ operator/admin users.
 ### Development server
 
 ```bash
-npm run dev
+npm run dev:local
 ```
+
+This command starts the local PostgreSQL instance, pins the app to the local
+database URL from `.env`, and uses the development OTP and geocoding providers.
+It does not use the Neon settings stored in `.env.local`.
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.

@@ -45,6 +45,15 @@ npm.cmd run db:migrate:deploy
 npm.cmd run db:seed
 ```
 
+Start the development app against that local database:
+
+```powershell
+npm.cmd run dev:local
+```
+
+`dev:local` refuses non-local database hosts and overrides any Neon values from
+`.env.local` for the child Next.js process.
+
 Verify a local production build through `next start`:
 
 ```powershell
