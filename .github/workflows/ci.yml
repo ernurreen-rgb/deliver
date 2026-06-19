@@ -79,8 +79,8 @@ jobs:
         env:
           CLOSED_PILOT_OTP_ENABLED: "true"
           CLOSED_PILOT_OTP_PHONE_ALLOWLIST: "+77000000001,+77000000002,+77000000003"
-          DATABASE_URL: postgresql://deliver:ci@ep-deliver-pooler.eu-central-1.aws.neon.tech/deliver?sslmode=require
-          PRISMA_DATABASE_URL: postgresql://deliver:ci@ep-deliver.eu-central-1.aws.neon.tech/deliver?sslmode=require
+          DATABASE_URL: postgresql://example_user:example_password@ep-deliver-ci-pooler.eu-central-1.aws.neon.tech/deliver_ci_fixture?sslmode=require
+          PRISMA_DATABASE_URL: postgresql://example_user:example_password@ep-deliver-ci.eu-central-1.aws.neon.tech/deliver_ci_fixture?sslmode=require
           RELEASE_DATABASE_TAG: staging
           VERCEL_ACCOUNT_PLAN: pro
         run: npm run release:check-env -- --target staging
@@ -89,8 +89,8 @@ jobs:
         env:
           CLOSED_PILOT_OTP_ENABLED: "true"
           CLOSED_PILOT_OTP_PHONE_ALLOWLIST: "+77000000001,+77000000002,+77000000003"
-          DATABASE_URL: postgresql://deliver:ci@ep-deliver-pooler.eu-central-1.aws.neon.tech/deliver?sslmode=require
-          PRISMA_DATABASE_URL: postgresql://deliver:ci@ep-deliver.eu-central-1.aws.neon.tech/deliver?sslmode=require
+          DATABASE_URL: postgresql://example_user:example_password@ep-deliver-ci-pooler.eu-central-1.aws.neon.tech/deliver_ci_fixture?sslmode=require
+          PRISMA_DATABASE_URL: postgresql://example_user:example_password@ep-deliver-ci.eu-central-1.aws.neon.tech/deliver_ci_fixture?sslmode=require
           RELEASE_DATABASE_TAG: production
           VERCEL_ACCOUNT_PLAN: pro
         run: npm run release:check-env:production
