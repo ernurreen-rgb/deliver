@@ -13,8 +13,16 @@ $serviceName = if ($env:DELIVER_POSTGRES_SERVICE) {
 
 $binDir = if ($env:DELIVER_POSTGRES_BIN) {
   $env:DELIVER_POSTGRES_BIN
-} else {
+} elseif (Test-Path -LiteralPath "E:\Apps\PostgreSQL\17\bin\pg_isready.exe") {
   "E:\Apps\PostgreSQL\17\bin"
+} else {
+  "E:\Apps\PostgreSQL\17-portable\bin"
+}
+
+$dataDir = if ($env:DELIVER_POSTGRES_DATA) {
+  $env:DELIVER_POSTGRES_DATA
+} else {
+  "E:\Projects\.postgres-data\deliver"
 }
 
 $hostName = if ($env:DELIVER_POSTGRES_HOST) {
@@ -42,16 +50,50 @@ $user = if ($env:DELIVER_POSTGRES_USER) {
 }
 
 $pgIsReady = Join-Path $binDir "pg_isready.exe"
+$pgCtl = Join-Path $binDir "pg_ctl.exe"
 $psql = Join-Path $binDir "psql.exe"
+$portableLog = Join-Path $dataDir "server.log"
 
 function Get-LocalPostgresService {
-  $service = Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+  return Get-Service -Name $serviceName -ErrorAction SilentlyContinue
+}
 
-  if (-not $service) {
-    throw "PostgreSQL service '$serviceName' was not found. Set DELIVER_POSTGRES_SERVICE if it uses another name."
+function Assert-PortablePostgresConfigured {
+  if (-not (Test-Path -LiteralPath $pgCtl)) {
+    throw "pg_ctl.exe was not found at '$pgCtl'. Set DELIVER_POSTGRES_BIN to the PostgreSQL bin directory."
   }
 
-  return $service
+  if (-not (Test-Path -LiteralPath (Join-Path $dataDir "PG_VERSION"))) {
+    throw "PostgreSQL data directory was not found at '$dataDir'. Set DELIVER_POSTGRES_DATA to the initialized cluster directory."
+  }
+}
+
+function Get-PortablePostgresStatus {
+  Assert-PortablePostgresConfigured
+  & $pgCtl status -D $dataDir *> $null
+  return $LASTEXITCODE -eq 0
+}
+
+function Start-PortablePostgres {
+  Assert-PortablePostgresConfigured
+
+  if (-not (Get-PortablePostgresStatus)) {
+    Start-Process `
+      -FilePath $pgCtl `
+      -ArgumentList @("start", "-D", $dataDir, "-l", $portableLog) `
+      -WindowStyle Hidden | Out-Null
+  }
+}
+
+function Stop-PortablePostgres {
+  Assert-PortablePostgresConfigured
+
+  if (Get-PortablePostgresStatus) {
+    & $pgCtl stop -D $dataDir -m fast -w -t 30 | Out-Host
+    if ($LASTEXITCODE -ne 0) {
+      throw "Portable PostgreSQL did not stop cleanly."
+    }
+  }
 }
 
 function Test-LocalPostgresReady {
@@ -65,7 +107,18 @@ function Test-LocalPostgresReady {
 
 function Show-LocalPostgresStatus {
   $service = Get-LocalPostgresService
-  $service | Select-Object Name, Status, DisplayName | Format-Table -AutoSize
+
+  if ($service) {
+    $service | Select-Object Name, Status, DisplayName | Format-Table -AutoSize
+  } else {
+    $portableRunning = Get-PortablePostgresStatus
+    [PSCustomObject]@{
+      Name = "portable-postgresql"
+      Status = if ($portableRunning) { "Running" } else { "Stopped" }
+      DataDirectory = $dataDir
+      BinDirectory = $binDir
+    } | Format-Table -AutoSize
+  }
 
   [void](Test-LocalPostgresReady)
 }
@@ -74,8 +127,10 @@ switch ($Action) {
   "start" {
     $service = Get-LocalPostgresService
 
-    if ($service.Status -ne "Running") {
+    if ($service -and $service.Status -ne "Running") {
       Start-Service -Name $serviceName
+    } elseif (-not $service) {
+      Start-PortablePostgres
     }
 
     $ready = $false
@@ -89,7 +144,7 @@ switch ($Action) {
     }
 
     if (-not $ready) {
-      throw "PostgreSQL service '$serviceName' started but did not become ready on ${hostName}:${port}."
+      throw "PostgreSQL did not become ready on ${hostName}:${port}."
     }
 
     Show-LocalPostgresStatus
@@ -97,11 +152,13 @@ switch ($Action) {
   "stop" {
     $service = Get-LocalPostgresService
 
-    if ($service.Status -ne "Stopped") {
+    if ($service -and $service.Status -ne "Stopped") {
       Stop-Service -Name $serviceName
+      Get-LocalPostgresService | Select-Object Name, Status, DisplayName | Format-Table -AutoSize
+    } elseif (-not $service) {
+      Stop-PortablePostgres
+      Show-LocalPostgresStatus
     }
-
-    Get-LocalPostgresService | Select-Object Name, Status, DisplayName | Format-Table -AutoSize
   }
   "status" {
     Show-LocalPostgresStatus

@@ -1,5 +1,6 @@
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "@/generated/prisma/client";
+import { createPrismaPgConfig } from "@/lib/db/config";
 
 type PrismaClientInstance = InstanceType<typeof PrismaClient>;
 
@@ -8,13 +9,7 @@ const globalForPrisma = globalThis as typeof globalThis & {
 };
 
 function createPrismaClient() {
-  const connectionString = process.env.DATABASE_URL;
-
-  if (!connectionString) {
-    throw new Error("DATABASE_URL is required to initialize Prisma.");
-  }
-
-  const adapter = new PrismaPg({ connectionString });
+  const adapter = new PrismaPg(createPrismaPgConfig());
 
   return new PrismaClient({
     adapter,
