@@ -9,6 +9,10 @@
   "scripts": {
     "dev": "npm run dev --workspace @deliver/web",
     "dev:local": "tsx --tsconfig tsconfig.json scripts/start-local-dev.ts",
+    "mobile:start": "npm run start --workspace @deliver/customer-mobile",
+    "mobile:android": "npm run android --workspace @deliver/customer-mobile",
+    "mobile:typecheck": "npm run typecheck --workspace @deliver/customer-mobile",
+    "mobile:export": "npm run export --workspace @deliver/customer-mobile",
     "build": "npm run build --workspace @deliver/web",
     "start": "npm run start --workspace @deliver/web",
     "postinstall": "prisma generate",

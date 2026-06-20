@@ -10,6 +10,7 @@ the repository root.
 ```text
 apps/
   web/                 # Next.js App Router application
+  customer-mobile/     # Expo Android/iOS customer application
 packages/              # shared contracts, domain, database and auth packages
 prisma/                # shared PostgreSQL schema and migrations
 scripts/               # repository-level release and acceptance tooling
@@ -34,6 +35,14 @@ Generated files are ignored by git and recreated by `npm install`/`npm run
 db:generate`. The web app keeps compatibility wrappers under
 `apps/web/src/generated/prisma` and `apps/web/src/lib/db` so existing imports
 continue to work while the split-ready packages are adopted incrementally.
+
+### Customer mobile
+
+`@deliver/customer-mobile` is an Expo SDK 56 workspace. It implements the
+customer-only OTP → restaurant → menu → cart → cash-order → status flow against
+`/api/v1`. Start it with `npm run mobile:android`; Android emulators use
+`http://10.0.2.2:3000` by default. Configuration, checks and iOS EAS steps are
+documented in [apps/customer-mobile/README.md](./apps/customer-mobile/README.md).
 
 ## Getting Started
 

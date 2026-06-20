@@ -42,6 +42,17 @@
 | `@deliver/database` | Runtime database config, lazy Prisma client и generated Prisma exports. | Не импортирует app-код. Generated client находится в `packages/database/src/generated/prisma`. |
 | `@deliver/auth` | Auth/session helpers и role-access helpers. | Может зависеть от `@deliver/contracts` и `@deliver/database`, но не от route/UI кода. |
 
+## Customer mobile boundary
+
+`apps/customer-mobile` is a separate Expo workspace and a customer-only
+surface. It may import `@deliver/contracts` and `@deliver/domain`, but it must
+not import Next.js app code, Prisma/database code or server auth/session code.
+It communicates with `apps/web` only through `/api/v1`, while PostgreSQL remains
+owned by the shared server-side database package.
+
+`npm run architecture:check` scans the mobile workspace as well as web and
+shared packages, and fails if the mobile app imports server-only packages.
+
 ## Проверка
 
 Запуск:

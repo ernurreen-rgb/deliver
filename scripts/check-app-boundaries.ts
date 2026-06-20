@@ -12,11 +12,16 @@ const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
 const IGNORED_DIRECTORIES = new Set([
   ".git",
   ".next",
+  ".expo",
+  "android",
+  "dist",
   "generated",
+  "ios",
   "node_modules",
 ]);
 const rootDir = process.cwd();
 const webSourceDir = "apps/web/src";
+const customerMobileDir = "apps/customer-mobile";
 const packageDependencyRules: Record<string, ReadonlySet<string>> = {
   auth: new Set(["contracts", "database"]),
   contracts: new Set(),
@@ -226,8 +231,8 @@ function addPackageBoundaryViolations(input: {
 
   if (
     input.importPath.startsWith("@/") ||
-    resolvedRelativePath.startsWith(`${webSourceDir}/`) ||
-    input.importPath.includes("apps/web")
+    resolvedRelativePath.startsWith("apps/") ||
+    input.importPath.includes("apps/")
   ) {
     input.violations.push({
       file: input.relativeFilePath,
@@ -260,6 +265,38 @@ function addPackageBoundaryViolations(input: {
       file: input.relativeFilePath,
       importPath: input.importPath,
       reason: `${packageName} package must stay framework-independent`,
+    });
+  }
+}
+
+function addCustomerMobileBoundaryViolations(input: {
+  importPath: string;
+  relativeFilePath: string;
+  violations: Violation[];
+}) {
+  if (!input.relativeFilePath.startsWith(`${customerMobileDir}/`)) {
+    return;
+  }
+
+  if (
+    input.importPath.startsWith("@/") ||
+    input.importPath === "next" ||
+    input.importPath.startsWith("next/") ||
+    input.importPath.includes("apps/web")
+  ) {
+    input.violations.push({
+      file: input.relativeFilePath,
+      importPath: input.importPath,
+      reason: "customer-mobile must not depend on the Next.js app",
+    });
+  }
+
+  const deliverPackage = input.importPath.match(/^@deliver\/([^/]+)/)?.[1];
+  if (deliverPackage && !new Set(["contracts", "domain"]).has(deliverPackage)) {
+    input.violations.push({
+      file: input.relativeFilePath,
+      importPath: input.importPath,
+      reason: `customer-mobile cannot import server package @deliver/${deliverPackage}`,
     });
   }
 }
@@ -299,6 +336,7 @@ function addRoleShellLayoutViolations(violations: Violation[]) {
 function main() {
   const sourceRoot = path.join(rootDir, webSourceDir);
   const packagesRoot = path.join(rootDir, "packages");
+  const customerMobileRoot = path.join(rootDir, customerMobileDir);
 
   if (!existsSync(sourceRoot)) {
     throw new Error(`Missing source root: ${sourceRoot}`);
@@ -307,6 +345,7 @@ function main() {
   const violations: Violation[] = [];
   const files = [
     ...walkFiles(sourceRoot),
+    ...(existsSync(customerMobileRoot) ? walkFiles(customerMobileRoot) : []),
     ...(existsSync(packagesRoot) ? walkFiles(packagesRoot) : []),
   ];
 
@@ -328,6 +367,11 @@ function main() {
       });
       addPackageBoundaryViolations({
         file,
+        importPath,
+        relativeFilePath,
+        violations,
+      });
+      addCustomerMobileBoundaryViolations({
         importPath,
         relativeFilePath,
         violations,

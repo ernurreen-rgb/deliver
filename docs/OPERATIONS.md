@@ -75,6 +75,18 @@ The smoke creates a local cash order through `/api/v1` and verifies that it can
 be read back with status history. The endpoint contract is documented in
 `docs/CUSTOMER_API.md`.
 
+For the Expo customer app, keep the same Next.js process running and use:
+
+```powershell
+npm.cmd run mobile:android
+```
+
+The Android emulator reaches the host API through `http://10.0.2.2:3000`.
+Physical devices require `EXPO_PUBLIC_API_URL` set to a reachable LAN URL.
+Run `npm.cmd run mobile:export` before an EAS build to prove both platform
+bundles. iOS cloud-build setup is documented in
+`apps/customer-mobile/README.md`; EAS and Apple credentials stay outside git.
+
 Verify a local production build through `next start`:
 
 ```powershell

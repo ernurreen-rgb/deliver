@@ -14,6 +14,7 @@ export default defineConfig({
     environment: "node",
     include: [
       "apps/web/src/**/*.test.ts",
+      "apps/customer-mobile/src/**/*.test.ts",
       "packages/**/*.test.ts",
       "scripts/**/*.test.ts",
     ],
