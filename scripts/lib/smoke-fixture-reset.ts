@@ -21,6 +21,17 @@ export const ACTIVE_SMOKE_DELIVERY_STATUSES = [
   "delivering",
 ] as const;
 
+export const ACTIVE_SMOKE_ORDER_STATUSES = [
+  "created",
+  "pending_confirmation",
+  "accepted",
+  "preparing",
+  "ready_for_pickup",
+  "courier_assigned",
+  "picked_up",
+  "delivering",
+] as const;
+
 type SmokeFixtureScope = {
   customerId: string;
   courierId: string;
@@ -29,14 +40,31 @@ type SmokeFixtureScope = {
 
 export type SmokeDeliveryScopeCandidate = {
   status: string;
-  order: {
-    customerComment: string | null;
-    customerId: string;
-    paymentMethod: string;
-    publicNumber: string;
-    restaurantId: string;
-  };
+  order: SmokeOrderScopeCandidate;
 };
+
+export type SmokeOrderScopeCandidate = {
+  customerComment: string | null;
+  customerId: string;
+  paymentMethod: string;
+  publicNumber: string;
+  restaurantId: string;
+  status: string;
+};
+
+export function isActiveSmokeFixtureOrder(
+  order: SmokeOrderScopeCandidate,
+  scope: Pick<SmokeFixtureScope, "customerId" | "restaurantId">,
+) {
+  return (
+    ACTIVE_SMOKE_ORDER_STATUSES.some((status) => status === order.status) &&
+    order.customerId === scope.customerId &&
+    order.restaurantId === scope.restaurantId &&
+    order.paymentMethod === "cash_to_courier" &&
+    (order.customerComment?.startsWith(SMOKE_ORDER_COMMENT_PREFIX) === true ||
+      order.publicNumber === SEED_SMOKE_ORDER_NUMBER)
+  );
+}
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) {
@@ -52,12 +80,7 @@ export function isActiveSmokeFixtureDelivery(
     ACTIVE_SMOKE_DELIVERY_STATUSES.some(
       (status) => status === delivery.status,
     ) &&
-    delivery.order.customerId === scope.customerId &&
-    delivery.order.restaurantId === scope.restaurantId &&
-    delivery.order.paymentMethod === "cash_to_courier" &&
-    (delivery.order.customerComment?.startsWith(
-      SMOKE_ORDER_COMMENT_PREFIX,
-    ) === true || delivery.order.publicNumber === SEED_SMOKE_ORDER_NUMBER)
+    isActiveSmokeFixtureOrder(delivery.order, scope)
   );
 }
 
@@ -207,51 +230,80 @@ async function resetSmokeFixturesInTransaction() {
         "Smoke fixture reset scope changed during the transaction.",
       );
 
-      for (const delivery of recheckedDeliveries) {
-        await tx.courierOffer.updateMany({
-          where: {
-            deliveryId: delivery.id,
-            status: { in: ["pending", "accepted"] },
-          },
-          data: {
-            status: "cancelled",
-            respondedAt: now,
-          },
-        });
-        await tx.delivery.update({
-          where: { id: delivery.id },
-          data: { status: "cancelled" },
-        });
+      const activeSmokeOrders = await tx.order.findMany({
+        where: {
+          customerId: scope.customerId,
+          restaurantId: scope.restaurantId,
+          paymentMethod: "cash_to_courier",
+          status: { in: [...ACTIVE_SMOKE_ORDER_STATUSES] },
+          OR: [
+            { customerComment: { startsWith: SMOKE_ORDER_COMMENT_PREFIX } },
+            { publicNumber: SEED_SMOKE_ORDER_NUMBER },
+          ],
+        },
+        include: { delivery: true },
+      });
+
+      assert(
+        activeSmokeOrders.every((order) =>
+          isActiveSmokeFixtureOrder(order, scope),
+        ),
+        "Smoke order reset scope changed during the transaction.",
+      );
+
+      let cancelledDeliveries = 0;
+
+      for (const order of activeSmokeOrders) {
+        if (order.delivery) {
+          await tx.courierOffer.updateMany({
+            where: {
+              deliveryId: order.delivery.id,
+              status: { in: ["pending", "accepted"] },
+            },
+            data: {
+              status: "cancelled",
+              respondedAt: now,
+            },
+          });
+
+          const deliveryResult = await tx.delivery.updateMany({
+            where: {
+              id: order.delivery.id,
+              status: { notIn: ["delivered", "cancelled"] },
+            },
+            data: { status: "cancelled" },
+          });
+          cancelledDeliveries += deliveryResult.count;
+        }
+
         await tx.order.update({
-          where: { id: delivery.order.id },
+          where: { id: order.id },
           data: {
             cancelledAt: now,
             status: "cancelled",
           },
         });
 
-        if (delivery.order.status !== "cancelled") {
-          await tx.orderStatusHistory.create({
-            data: {
-              orderId: delivery.order.id,
-              fromStatus: delivery.order.status,
-              toStatus: "cancelled",
-              comment:
-                "Smoke fixture reset cancelled stale smoke order before rerun.",
-            },
-          });
-        }
+        await tx.orderStatusHistory.create({
+          data: {
+            orderId: order.id,
+            fromStatus: order.status,
+            toStatus: "cancelled",
+            comment:
+              "Smoke fixture reset cancelled stale smoke order before rerun.",
+          },
+        });
 
         await writeAuditLog({
           tx,
           entityType: "order",
-          entityId: delivery.order.id,
+          entityId: order.id,
           action: "smoke_fixture_reset_v1",
           metadata: {
-            deliveryId: delivery.id,
-            fromDeliveryStatus: delivery.status,
-            fromOrderStatus: delivery.order.status,
-            publicNumber: delivery.order.publicNumber,
+            deliveryId: order.delivery?.id ?? null,
+            fromDeliveryStatus: order.delivery?.status ?? null,
+            fromOrderStatus: order.status,
+            publicNumber: order.publicNumber,
           },
         });
       }
@@ -270,7 +322,8 @@ async function resetSmokeFixturesInTransaction() {
       });
 
       return {
-        cancelledDeliveries: recheckedDeliveries.length,
+        cancelledDeliveries,
+        cancelledOrders: activeSmokeOrders.length,
         resetCourier: true,
       };
     },

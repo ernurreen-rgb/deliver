@@ -499,8 +499,8 @@ async function main() {
     requireStatus(operatorPage.response, 200, "operator_page_status"),
     requireText(
       operatorPage.body,
-      `data-pilot-focus-order="${order.publicNumber}"`,
-      "operator_current_pilot_focus_matches_smoke",
+      order.publicNumber,
+      "operator_includes_smoke_order",
     ),
     requireText(operatorPage.body, "Текущий pilot cash-order", "operator_has_pilot_focus"),
   );

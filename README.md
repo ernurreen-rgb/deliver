@@ -21,7 +21,9 @@ Default local setup:
 These are workstation defaults, not repository requirements. Override them with
 `DELIVER_POSTGRES_BIN`, `DELIVER_POSTGRES_DATA`,
 `DELIVER_POSTGRES_SERVICE`, `DELIVER_POSTGRES_HOST` and
-`DELIVER_POSTGRES_PORT` when PostgreSQL is installed elsewhere.
+`DELIVER_POSTGRES_PORT` when PostgreSQL is installed elsewhere. Slow recovery
+can be accommodated with `DELIVER_POSTGRES_START_TIMEOUT_SECONDS` (default: 90,
+allowed range: 10-300).
 
 Useful commands:
 

@@ -49,6 +49,16 @@ $user = if ($env:DELIVER_POSTGRES_USER) {
   "postgres"
 }
 
+$startTimeoutSeconds = if ($env:DELIVER_POSTGRES_START_TIMEOUT_SECONDS) {
+  [int] $env:DELIVER_POSTGRES_START_TIMEOUT_SECONDS
+} else {
+  90
+}
+
+if ($startTimeoutSeconds -lt 10 -or $startTimeoutSeconds -gt 300) {
+  throw "DELIVER_POSTGRES_START_TIMEOUT_SECONDS must be between 10 and 300."
+}
+
 $pgIsReady = Join-Path $binDir "pg_isready.exe"
 $pgCtl = Join-Path $binDir "pg_ctl.exe"
 $psql = Join-Path $binDir "psql.exe"
@@ -134,7 +144,7 @@ switch ($Action) {
     }
 
     $ready = $false
-    for ($attempt = 0; $attempt -lt 30; $attempt++) {
+    for ($attempt = 0; $attempt -lt $startTimeoutSeconds; $attempt++) {
       if (Test-LocalPostgresReady) {
         $ready = $true
         break
@@ -144,7 +154,7 @@ switch ($Action) {
     }
 
     if (-not $ready) {
-      throw "PostgreSQL did not become ready on ${hostName}:${port}."
+      throw "PostgreSQL did not become ready on ${hostName}:${port} within ${startTimeoutSeconds} seconds."
     }
 
     Show-LocalPostgresStatus

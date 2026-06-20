@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isActiveSmokeFixtureDelivery,
+  isActiveSmokeFixtureOrder,
   type SmokeDeliveryScopeCandidate,
 } from "./smoke-fixture-reset";
 
@@ -23,6 +24,7 @@ function candidate(
       paymentMethod: "cash_to_courier",
       publicNumber: "A-2000",
       restaurantId: "restaurant-smoke",
+      status: "ready_for_pickup",
       ...overrides.order,
     },
   };
@@ -65,4 +67,19 @@ describe("isActiveSmokeFixtureDelivery", () => {
       isActiveSmokeFixtureDelivery(candidate({ status: "delivered" }), scope),
     ).toBe(false);
   });
+});
+
+describe("isActiveSmokeFixtureOrder", () => {
+  it("accepts a smoke order before courier assignment", () => {
+    expect(isActiveSmokeFixtureOrder(candidate().order, scope)).toBe(true);
+  });
+
+  it.each(["delivered", "cancelled"])(
+    "rejects a terminal %s order",
+    (status) => {
+      expect(
+        isActiveSmokeFixtureOrder(candidate({ order: { status } }).order, scope),
+      ).toBe(false);
+    },
+  );
 });
