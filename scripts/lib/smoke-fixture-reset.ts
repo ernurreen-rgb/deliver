@@ -1,7 +1,7 @@
-import { Prisma } from "../../src/generated/prisma/client";
-import { writeAuditLog } from "../../src/domains/audit/log";
-import { getPrisma } from "../../src/lib/db/prisma";
-import { getReleaseTarget } from "../../src/lib/release-env";
+import { Prisma } from "@/generated/prisma/client";
+import { writeAuditLog } from "@/domains/audit/log";
+import { getPrisma } from "@/lib/db/prisma";
+import { getReleaseTarget } from "@/lib/release-env";
 
 export const SMOKE_CUSTOMER_PHONE = "+77000000002";
 export const SMOKE_COURIER_PHONE = "+77000000003";

@@ -14,7 +14,7 @@
 /coverage
 
 # next.js
-/.next/
+**/.next/
 /out/
 
 # production
@@ -47,7 +47,7 @@ dev-server*.log
 *.tsbuildinfo
 next-env.d.ts
 
-/src/generated/prisma
+/apps/web/src/generated/prisma
 
 .vercel
 .env*.local

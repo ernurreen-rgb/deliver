@@ -3,9 +3,9 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { DEV_OTP_CODE } from "../src/domains/auth/constants";
-import { getPrisma } from "../src/lib/db/prisma";
-import { getReleaseTarget } from "../src/lib/release-env";
+import { DEV_OTP_CODE } from "@/domains/auth/constants";
+import { getPrisma } from "@/lib/db/prisma";
+import { getReleaseTarget } from "@/lib/release-env";
 import { runSmokeCashOrder } from "./smoke-cash-order";
 
 const ADMIN_PHONE = "+77000000001";

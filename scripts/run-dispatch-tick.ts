@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { runDispatchTick } from "../src/domains/delivery/dispatch-job";
-import { getPrisma } from "../src/lib/db/prisma";
+import { runDispatchTick } from "@/domains/delivery/dispatch-job";
+import { getPrisma } from "@/lib/db/prisma";
 
 async function main() {
   try {

@@ -1,7 +1,7 @@
 import "dotenv/config";
-import { DEV_OTP_CODE, SESSION_COOKIE_NAME } from "../src/domains/auth/constants";
-import { getPrisma } from "../src/lib/db/prisma";
-import { getReleaseTarget } from "../src/lib/release-env";
+import { DEV_OTP_CODE, SESSION_COOKIE_NAME } from "@/domains/auth/constants";
+import { getPrisma } from "@/lib/db/prisma";
+import { getReleaseTarget } from "@/lib/release-env";
 import { runSmokeCashOrder } from "./smoke-cash-order";
 
 const ADMIN_PHONE = "+77000000001";

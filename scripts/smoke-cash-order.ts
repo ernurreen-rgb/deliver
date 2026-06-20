@@ -1,21 +1,21 @@
 import "dotenv/config";
 import { pathToFileURL } from "node:url";
-import { Prisma } from "../src/generated/prisma/client";
-import { acceptCourierOfferForUser, dispatchNextCourierOffer } from "../src/domains/delivery/dispatch";
+import { Prisma } from "@/generated/prisma/client";
+import { acceptCourierOfferForUser, dispatchNextCourierOffer } from "@/domains/delivery/dispatch";
 import {
   calculateDeliveryFee,
   calculateDistanceMeters,
   toNumber,
-} from "../src/domains/delivery/pricing";
-import { transitionCourierDeliveryForUser } from "../src/domains/delivery/lifecycle";
-import { createPublicOrderNumber } from "../src/domains/orders/public-number";
+} from "@/domains/delivery/pricing";
+import { transitionCourierDeliveryForUser } from "@/domains/delivery/lifecycle";
+import { createPublicOrderNumber } from "@/domains/orders/public-number";
 import {
   getOperatorOrders,
   getOperatorPilotJournal,
-} from "../src/domains/orders/queries";
-import { writeAuditLog } from "../src/domains/audit/log";
-import { getPrisma } from "../src/lib/db/prisma";
-import { getReleaseTarget } from "../src/lib/release-env";
+} from "@/domains/orders/queries";
+import { writeAuditLog } from "@/domains/audit/log";
+import { getPrisma } from "@/lib/db/prisma";
+import { getReleaseTarget } from "@/lib/release-env";
 import {
   ACTIVE_SMOKE_DELIVERY_STATUSES,
   prepareSmokeFixturesForRerun,

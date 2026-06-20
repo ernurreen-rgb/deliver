@@ -37,43 +37,49 @@
 ## 3. Предлагаемая структура проекта
 
 ```text
-src/
-  app/
-    (customer)/
-      page.tsx
-      restaurants/
-      account/
-    restaurant/
-    courier/
-    operator/
-    admin/
-    api/
-  components/
-    ui/
-    layout/
-    shared/
-  config/
-  domains/
-    auth/
-    users/
-    restaurants/
-    menu/
-    cart/
-    orders/
-    delivery/
-    couriers/
-    payments/
-    promotions/
-    notifications/
-    localization/
-  lib/
-    db/
-    auth/
-    i18n/
-    money/
-    validation/
-  workers/
-  types/
+apps/
+  web/
+    src/
+      app/
+        (customer)/
+          page.tsx
+          restaurants/
+          account/
+        restaurant/
+        courier/
+        operator/
+        admin/
+        api/
+      components/
+        layout/
+        shared/
+      config/
+      domains/
+        auth/
+        users/
+        restaurants/
+        menu/
+        cart/
+        orders/
+        delivery/
+        couriers/
+        payments/
+        promotions/
+        notifications/
+        localization/
+      lib/
+        db/
+        http/
+        money/
+      workers/
+      types/
+packages/
+  contracts/
+  domain/
+  database/
+  auth/
+prisma/
+scripts/
 ```
 
 ## 4. Доменные модули
@@ -191,7 +197,7 @@ Important:
 Recommended route groups:
 
 ```text
-src/app/
+apps/web/src/app/
   (customer)/
     page.tsx
     restaurants/

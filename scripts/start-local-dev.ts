@@ -28,7 +28,9 @@ function run(command: string, args: string[], env: NodeJS.ProcessEnv) {
 }
 
 async function main() {
-  const envPath = path.join(process.cwd(), ".env");
+  const rootDir = process.cwd();
+  const webAppDir = path.join(rootDir, "apps", "web");
+  const envPath = path.join(rootDir, ".env");
   const fileEnv = parse(readFileSync(envPath));
   const databaseUrl = fileEnv.DATABASE_URL;
 
@@ -67,7 +69,7 @@ async function main() {
       "-ExecutionPolicy",
       "Bypass",
       "-File",
-      path.join(process.cwd(), "scripts", "local-postgres.ps1"),
+      path.join(rootDir, "scripts", "local-postgres.ps1"),
       "start",
     ],
     localEnv,
@@ -80,7 +82,7 @@ async function main() {
   const nextProcess = spawn(
     process.execPath,
     [
-      path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next"),
+      path.join(rootDir, "node_modules", "next", "dist", "bin", "next"),
       "dev",
       "--hostname",
       "0.0.0.0",
@@ -88,7 +90,7 @@ async function main() {
       port,
     ],
     {
-      cwd: process.cwd(),
+      cwd: webAppDir,
       env: localEnv,
       shell: false,
       stdio: "inherit",

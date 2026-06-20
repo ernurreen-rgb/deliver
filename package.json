@@ -2,11 +2,15 @@
   "name": "deliver",
   "version": "0.1.0",
   "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "next dev",
+    "dev": "npm run dev --workspace @deliver/web",
     "dev:local": "tsx --tsconfig tsconfig.json scripts/start-local-dev.ts",
-    "build": "next build",
-    "start": "next start",
+    "build": "npm run build --workspace @deliver/web",
+    "start": "npm run start --workspace @deliver/web",
     "postinstall": "prisma generate",
     "lint": "eslint",
     "test": "vitest run",
@@ -46,10 +50,8 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "next": "16.2.6",
     "pg": "^8.20.0",
-    "react": "19.2.4",
-    "react-dom": "19.2.4"
+    "@next/env": "16.2.6"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

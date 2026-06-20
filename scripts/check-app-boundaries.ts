@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
-import { platformSurfaces } from "../src/platform/app-boundaries";
+import { platformSurfaces } from "@/platform/app-boundaries";
 
 type Violation = {
   file: string;
@@ -11,6 +11,7 @@ type Violation = {
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
 const IGNORED_DIRECTORIES = new Set([".git", ".next", "node_modules"]);
 const rootDir = process.cwd();
+const webSourceDir = "apps/web/src";
 
 function toPosixPath(value: string) {
   return value.replaceAll("\\", "/");
@@ -147,15 +148,15 @@ function addLayerViolations(input: {
 
   const importsApp =
     input.importPath.startsWith("@/app/") ||
-    resolvedRelativePath.startsWith("src/app/");
+    resolvedRelativePath.startsWith(`${webSourceDir}/app/`);
   const importsComponents =
     input.importPath.startsWith("@/components/") ||
-    resolvedRelativePath.startsWith("src/components/");
+    resolvedRelativePath.startsWith(`${webSourceDir}/components/`);
   const importsWorkers =
     input.importPath.startsWith("@/workers/") ||
-    resolvedRelativePath.startsWith("src/workers/");
+    resolvedRelativePath.startsWith(`${webSourceDir}/workers/`);
 
-  if (input.relativeFilePath.startsWith("src/domains/")) {
+  if (input.relativeFilePath.startsWith(`${webSourceDir}/domains/`)) {
     if (importsApp || importsComponents || importsWorkers) {
       input.violations.push({
         file: input.relativeFilePath,
@@ -165,7 +166,7 @@ function addLayerViolations(input: {
     }
   }
 
-  if (input.relativeFilePath.startsWith("src/components/")) {
+  if (input.relativeFilePath.startsWith(`${webSourceDir}/components/`)) {
     if (importsApp || importsWorkers) {
       input.violations.push({
         file: input.relativeFilePath,
@@ -175,7 +176,7 @@ function addLayerViolations(input: {
     }
   }
 
-  if (input.relativeFilePath.startsWith("src/workers/")) {
+  if (input.relativeFilePath.startsWith(`${webSourceDir}/workers/`)) {
     if (importsApp || importsComponents) {
       input.violations.push({
         file: input.relativeFilePath,
@@ -219,7 +220,7 @@ function addRoleShellLayoutViolations(violations: Violation[]) {
 }
 
 function main() {
-  const sourceRoot = path.join(rootDir, "src");
+  const sourceRoot = path.join(rootDir, webSourceDir);
 
   if (!existsSync(sourceRoot)) {
     throw new Error(`Missing source root: ${sourceRoot}`);

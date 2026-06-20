@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { getPrisma } from "../src/lib/db/prisma";
-import { getReleaseTarget } from "../src/lib/release-env";
+import { getPrisma } from "@/lib/db/prisma";
+import { getReleaseTarget } from "@/lib/release-env";
 
 const LOCAL_DATABASE_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 const POSTGRES_HOST_OVERRIDE_PARAMS = new Set(["host", "hostaddr"]);

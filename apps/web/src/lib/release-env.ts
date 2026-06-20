@@ -6,7 +6,7 @@ import {
   parseClosedPilotOtpPhoneAllowlist,
 } from "@/domains/auth/constants";
 import { getPrismaPoolSettings } from "@/lib/db/config";
-import vercelConfig from "../../vercel.json";
+import vercelConfig from "../../../../vercel.json";
 
 export type ReleaseEnv = Record<string, string | undefined>;
 

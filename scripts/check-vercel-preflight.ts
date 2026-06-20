@@ -3,7 +3,7 @@ import { execFile } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { getReleaseTarget } from "../src/lib/release-env";
+import { getReleaseTarget } from "@/lib/release-env";
 
 const execFileAsync = promisify(execFile);
 

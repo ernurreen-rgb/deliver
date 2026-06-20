@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { validateReleaseEnv } from "../src/lib/release-env";
+import { validateReleaseEnv } from "@/lib/release-env";
 
 function getTargetArg() {
   const targetIndex = process.argv.findIndex((arg) => arg === "--target");

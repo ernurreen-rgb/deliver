@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
-import type { ReleaseTarget } from "../../src/lib/release-env";
+import type { ReleaseTarget } from "@/lib/release-env";
 
 type LaunchReleaseTarget = Exclude<ReleaseTarget, "local">;
 

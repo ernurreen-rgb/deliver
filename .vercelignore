@@ -2,6 +2,7 @@
 .env*.local
 .vercel
 .next
+**/.next
 node_modules
 .pilot-evidence
 dev-server*.log

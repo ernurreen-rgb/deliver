@@ -25,7 +25,7 @@ export const platformSurfaces = [
   {
     id: "customer",
     label: "Customer web",
-    currentAppDir: "src/app/(customer)",
+    currentAppDir: "apps/web/src/app/(customer)",
     currentRoutePrefixes: [
       "/",
       "/account",
@@ -43,7 +43,7 @@ export const platformSurfaces = [
   {
     id: "restaurant",
     label: "Restaurant cabinet",
-    currentAppDir: "src/app/restaurant",
+    currentAppDir: "apps/web/src/app/restaurant",
     currentRoutePrefixes: ["/restaurant"],
     futurePackage: "apps/restaurant",
     // Admins still need an explicit restaurant_staff row for restaurant mutations.
@@ -54,7 +54,7 @@ export const platformSurfaces = [
   {
     id: "courier",
     label: "Courier cabinet",
-    currentAppDir: "src/app/courier",
+    currentAppDir: "apps/web/src/app/courier",
     currentRoutePrefixes: ["/courier"],
     futurePackage: "apps/courier",
     access: ["courier", "admin"],
@@ -64,7 +64,7 @@ export const platformSurfaces = [
   {
     id: "operator",
     label: "Operator back-office",
-    currentAppDir: "src/app/operator",
+    currentAppDir: "apps/web/src/app/operator",
     currentRoutePrefixes: ["/operator"],
     futurePackage: "apps/operator",
     access: ["operator", "admin"],
@@ -74,7 +74,7 @@ export const platformSurfaces = [
   {
     id: "admin",
     label: "Admin back-office",
-    currentAppDir: "src/app/admin",
+    currentAppDir: "apps/web/src/app/admin",
     currentRoutePrefixes: ["/admin"],
     futurePackage: "apps/admin",
     access: ["admin"],
@@ -84,7 +84,7 @@ export const platformSurfaces = [
   {
     id: "api",
     label: "Backend API",
-    currentAppDir: "src/app/api",
+    currentAppDir: "apps/web/src/app/api",
     currentRoutePrefixes: ["/api"],
     futurePackage: "apps/api",
     access: "service",
@@ -101,7 +101,7 @@ export const platformSplitTargets = [
   })),
   {
     id: "worker",
-    currentDir: "src/workers",
+    currentDir: "apps/web/src/workers",
     futurePackage: "apps/worker",
   },
 ] as const satisfies readonly {

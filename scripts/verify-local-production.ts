@@ -24,6 +24,10 @@ function nextCliPath() {
   return path.join(process.cwd(), "node_modules", "next", "dist", "bin", "next");
 }
 
+function webAppPath() {
+  return path.join(process.cwd(), "apps", "web");
+}
+
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -215,7 +219,7 @@ async function startProductionServer(port: number, env: Record<string, string>) 
     "-H",
     LOCAL_HOSTNAME,
   ], {
-    cwd: process.cwd(),
+    cwd: webAppPath(),
     env: {
       ...process.env,
       ...env,

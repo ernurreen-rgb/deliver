@@ -1,4 +1,9 @@
 import type { NextConfig } from "next";
+import { loadEnvConfig } from "@next/env";
+import { fileURLToPath } from "node:url";
+
+const monorepoRoot = fileURLToPath(new URL("../..", import.meta.url));
+loadEnvConfig(monorepoRoot, process.env.NODE_ENV !== "production");
 
 const isDev = process.env.NODE_ENV !== "production";
 const twoGisSources =
@@ -22,6 +27,10 @@ const contentSecurityPolicy = [
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  outputFileTracingRoot: monorepoRoot,
+  turbopack: {
+    root: monorepoRoot,
+  },
   images: {
     localPatterns: [
       {

@@ -2,6 +2,23 @@
 
 Food delivery platform prototype for Almaty.
 
+## Repository layout
+
+Deliver is an npm-workspaces monorepo. Run lifecycle and quality commands from
+the repository root.
+
+```text
+apps/
+  web/                 # Next.js App Router application
+packages/              # shared contracts, domain, database and auth packages
+prisma/                # shared PostgreSQL schema and migrations
+scripts/               # repository-level release and acceptance tooling
+```
+
+The root `npm run dev`, `npm run build` and `npm run start` commands delegate to
+`@deliver/web`. Vercel builds from the repository root and publishes
+`apps/web/.next`, so the existing project linkage and cron route remain valid.
+
 ## Getting Started
 
 ### Local database

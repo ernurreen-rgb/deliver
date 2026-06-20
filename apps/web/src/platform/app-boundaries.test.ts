@@ -7,13 +7,13 @@ import {
 
 describe("platform app boundaries", () => {
   it("maps current App Router folders to future split packages", () => {
-    expect(getPlatformSurfaceByAppPath("src/app/(customer)/checkout/page.tsx")?.id).toBe(
+    expect(getPlatformSurfaceByAppPath("apps/web/src/app/(customer)/checkout/page.tsx")?.id).toBe(
       "customer",
     );
-    expect(getPlatformSurfaceByAppPath("src/app/restaurant/menu/page.tsx")?.id).toBe(
+    expect(getPlatformSurfaceByAppPath("apps/web/src/app/restaurant/menu/page.tsx")?.id).toBe(
       "restaurant",
     );
-    expect(getPlatformSurfaceByAppPath("src/app/operator/pilot/page.tsx")?.futurePackage).toBe(
+    expect(getPlatformSurfaceByAppPath("apps/web/src/app/operator/pilot/page.tsx")?.futurePackage).toBe(
       "apps/operator",
     );
   });

@@ -7,7 +7,7 @@ import {
   getReleaseTarget,
   RELEASE_DATABASE_TAG_ENV,
   type ReleaseTarget,
-} from "../src/lib/release-env";
+} from "@/lib/release-env";
 import {
   buildDeployedReleaseManifest,
   writeDeployedReleaseManifest,

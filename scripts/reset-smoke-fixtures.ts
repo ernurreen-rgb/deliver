@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { getPrisma } from "../src/lib/db/prisma";
+import { getPrisma } from "@/lib/db/prisma";
 import { prepareSmokeFixturesForRerun } from "./lib/smoke-fixture-reset";
 
 prepareSmokeFixturesForRerun()

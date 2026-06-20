@@ -30,8 +30,9 @@ npm.cmd run smoke:reset-fixtures
 $env:SMOKE_RESET_FIXTURES="0"
 ```
 
-The reset command only cancels active deliveries whose order comment starts
-with `smoke:cash-order` and refuses to touch non-smoke active deliveries.
+The reset command cancels active smoke orders (including orders still waiting
+for courier assignment) whose comment starts with `smoke:cash-order`, and
+refuses to touch non-smoke active deliveries.
 
 ## Local Verification
 
@@ -62,6 +63,9 @@ npm.cmd run release:verify-local-prod
 
 This builds the app, starts a temporary production server, checks the runtime
 API and role flows, captures viewport evidence, and then stops the server.
+
+The Vercel project remains linked at the repository root. `vercel.json` runs the
+root workspace build and uses `apps/web/.next` as the Next.js output directory.
 
 ## Release Gate
 
