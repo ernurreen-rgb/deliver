@@ -24,6 +24,7 @@
     "release:verify-deployed": "tsx --tsconfig tsconfig.json scripts/verify-deployed-release.ts",
     "release:verify-local-prod": "tsx --tsconfig tsconfig.json scripts/verify-local-production.ts",
     "smoke:cash-order": "tsx --tsconfig tsconfig.json scripts/smoke-cash-order.ts",
+    "smoke:customer-api": "tsx --tsconfig tsconfig.json scripts/smoke-customer-api.ts",
     "smoke:reset-fixtures": "tsx --tsconfig tsconfig.json scripts/reset-smoke-fixtures.ts",
     "acceptance:pilot": "tsx --tsconfig tsconfig.json scripts/acceptance-pilot-role-flow.ts",
     "acceptance:viewports": "tsx --tsconfig tsconfig.json scripts/check-pilot-viewports.ts",

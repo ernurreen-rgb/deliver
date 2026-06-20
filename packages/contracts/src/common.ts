@@ -11,6 +11,7 @@ export type ApiErrorCode =
 export type ApiError = {
   code: ApiErrorCode;
   message: string;
+  reason?: string;
   fieldErrors?: Record<string, string>;
 };
 

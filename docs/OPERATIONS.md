@@ -64,6 +64,17 @@ npm.cmd run dev:local
 `dev:local` refuses non-local database hosts and overrides any Neon values from
 `.env.local` for the child Next.js process.
 
+Verify the versioned customer API flow against the running app:
+
+```powershell
+npm.cmd run auth:reset-local-rate-limits
+npm.cmd run smoke:customer-api
+```
+
+The smoke creates a local cash order through `/api/v1` and verifies that it can
+be read back with status history. The endpoint contract is documented in
+`docs/CUSTOMER_API.md`.
+
 Verify a local production build through `next start`:
 
 ```powershell

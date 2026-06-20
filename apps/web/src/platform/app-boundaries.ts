@@ -88,7 +88,7 @@ export const platformSurfaces = [
     currentRoutePrefixes: ["/api"],
     futurePackage: "apps/api",
     access: "service",
-    allowedDomains: ["auth", "delivery", "geo"],
+    allowedDomains: ["auth", "catalog", "delivery", "geo", "orders", "restaurants"],
     allowedComponentGroups: [],
   },
 ] as const satisfies readonly PlatformSurface[];

@@ -7,7 +7,14 @@ import {
 } from "./constants";
 import { createSessionToken, sha256 } from "./crypto";
 
-export async function createSession(userId: string) {
+export type SessionTokenResult = {
+  token: string;
+  expiresAt: Date;
+};
+
+export async function createSessionRecord(
+  userId: string,
+): Promise<SessionTokenResult> {
   const prisma = getPrisma();
   const token = createSessionToken();
   const tokenHash = sha256(token);
@@ -23,13 +30,32 @@ export async function createSession(userId: string) {
     },
   });
 
+  return { token, expiresAt };
+}
+
+export async function createSession(userId: string) {
+  const session = await createSessionRecord(userId);
   const cookieStore = await cookies();
-  cookieStore.set(SESSION_COOKIE_NAME, token, {
+  cookieStore.set(SESSION_COOKIE_NAME, session.token, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     path: "/",
-    expires: expiresAt,
+    expires: session.expiresAt,
+  });
+
+  return session;
+}
+
+export async function revokeSessionToken(token: string) {
+  await getPrisma().userSession.updateMany({
+    where: {
+      sessionTokenHash: sha256(token),
+      revokedAt: null,
+    },
+    data: {
+      revokedAt: new Date(),
+    },
   });
 }
 
@@ -38,24 +64,13 @@ export async function destroySession() {
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
 
   if (token) {
-    await getPrisma().userSession.updateMany({
-      where: {
-        sessionTokenHash: sha256(token),
-        revokedAt: null,
-      },
-      data: {
-        revokedAt: new Date(),
-      },
-    });
+    await revokeSessionToken(token);
   }
 
   cookieStore.delete(SESSION_COOKIE_NAME);
 }
 
-export const getCurrentUser = cache(async function getCurrentUser() {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
-
+export async function getUserBySessionToken(token: string | null | undefined) {
   if (!token) {
     return null;
   }
@@ -93,4 +108,11 @@ export const getCurrentUser = cache(async function getCurrentUser() {
   }
 
   return session.user;
+}
+
+export const getCurrentUser = cache(async function getCurrentUser() {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
+
+  return getUserBySessionToken(token);
 });

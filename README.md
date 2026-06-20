@@ -80,6 +80,16 @@ Run the cash-only MVP smoke:
 npm run smoke:cash-order
 ```
 
+Run the customer JSON API flow against a running local app:
+
+```bash
+npm run smoke:customer-api
+```
+
+This verifies OTP login, restaurant and menu discovery, server-side cart
+pricing, idempotent cash checkout, status lookup and logout. It refuses
+non-local URLs because it creates a real order.
+
 Run the web pilot acceptance against a running app:
 
 ```bash
@@ -158,6 +168,8 @@ npm run release:verify-local-prod
 ```
 
 Operational deployment notes are in [docs/OPERATIONS.md](./docs/OPERATIONS.md).
+The versioned mobile/web API contract is documented in
+[docs/CUSTOMER_API.md](./docs/CUSTOMER_API.md).
 The release checklist is in
 [docs/RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md).
 Future app split boundaries are documented in [APP_BOUNDARIES.md](./APP_BOUNDARIES.md).
