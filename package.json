@@ -31,6 +31,7 @@
     "smoke:customer-api": "tsx --tsconfig tsconfig.json scripts/smoke-customer-api.ts",
     "smoke:reset-fixtures": "tsx --tsconfig tsconfig.json scripts/reset-smoke-fixtures.ts",
     "acceptance:pilot": "tsx --tsconfig tsconfig.json scripts/acceptance-pilot-role-flow.ts",
+    "acceptance:customer-web": "tsx --tsconfig tsconfig.json scripts/acceptance-customer-web-flow.ts",
     "acceptance:viewports": "tsx --tsconfig tsconfig.json scripts/check-pilot-viewports.ts",
     "auth:reset-local-rate-limits": "tsx --tsconfig tsconfig.json scripts/reset-local-auth-rate-limits.ts",
     "jobs:dispatch-tick": "tsx --tsconfig tsconfig.json scripts/run-dispatch-tick.ts",
@@ -57,10 +58,10 @@
     "@deliver/contracts": "*",
     "@deliver/database": "*",
     "@deliver/domain": "*",
+    "@next/env": "16.2.6",
     "@prisma/adapter-pg": "^7.8.0",
     "@prisma/client": "^7.8.0",
-    "pg": "^8.20.0",
-    "@next/env": "16.2.6"
+    "pg": "^8.20.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -70,6 +71,7 @@
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.6",
+    "playwright-core": "^1.61.0",
     "prisma": "^7.8.0",
     "tailwindcss": "^4",
     "tsx": "^4.21.0",

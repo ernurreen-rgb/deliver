@@ -89,6 +89,15 @@ target write flag before rerunning `release:verify-deployed`.
 - No horizontal overflow, clipped controls, missing expected content or browser
   errors were reported.
 
+For a local customer-mobile candidate, also require:
+
+- `npm.cmd run acceptance:customer-web` completed the browser OTP-to-status flow;
+- the Android app completed the same OTP-to-status flow against the same API and
+  PostgreSQL database;
+- the mobile status screen remained active while the web scenario completed;
+- Expo Doctor, Android/iOS export and Android crash-log checks passed;
+- the run is recorded in `docs/CUSTOMER_MOBILE_ACCEPTANCE.md`.
+
 ## Production-Specific Checks
 
 - `RELEASE_TARGET=production`.

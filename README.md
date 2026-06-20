@@ -109,6 +109,16 @@ This creates a fresh cash smoke order, logs in through the OTP forms with
 separate customer, admin/restaurant and courier sessions, and verifies the main
 role surfaces.
 
+Run the complete customer web UI flow against a running local app:
+
+```bash
+npm run acceptance:customer-web
+```
+
+This launches the installed Chrome browser headlessly and verifies OTP login,
+restaurant selection, menu, cart, cash-only checkout and the resulting order
+status page. It refuses non-local targets because it creates a real order.
+
 Run the browser viewport acceptance against a running app:
 
 ```bash
@@ -181,6 +191,8 @@ The versioned mobile/web API contract is documented in
 [docs/CUSTOMER_API.md](./docs/CUSTOMER_API.md).
 The release checklist is in
 [docs/RELEASE_CHECKLIST.md](./docs/RELEASE_CHECKLIST.md).
+The verified simultaneous web/Android customer scenario is recorded in
+[docs/CUSTOMER_MOBILE_ACCEPTANCE.md](./docs/CUSTOMER_MOBILE_ACCEPTANCE.md).
 Future app split boundaries are documented in [APP_BOUNDARIES.md](./APP_BOUNDARIES.md).
 The in-app manual pilot checklist is available at `/operator/pilot` for
 operator/admin users.

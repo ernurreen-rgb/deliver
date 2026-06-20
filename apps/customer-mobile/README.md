@@ -58,6 +58,12 @@ npm.cmd run lint
 npm.cmd run architecture:check
 ```
 
+The release candidate was exercised on an Android API 36 x86_64 emulator through
+Expo Go. The full customer flow completed against the local Next.js API and
+shared PostgreSQL database with an empty crash buffer. The reproducible
+cross-client acceptance record is in
+[`docs/CUSTOMER_MOBILE_ACCEPTANCE.md`](../../docs/CUSTOMER_MOBILE_ACCEPTANCE.md).
+
 `mobile:export` bundles both Android and iOS. React is intentionally pinned to
 the repository's `19.2.4` patch to avoid two React runtimes in the npm
 monorepo; React Native 0.85 accepts `^19.2.3`. The explicit Expo install
