@@ -11,6 +11,7 @@ the repository root.
 apps/
   web/                 # Next.js App Router application
   customer-mobile/     # Expo Android/iOS customer application
+  courier-mobile/      # Expo Android/iOS courier application
 packages/              # shared contracts, domain, database and auth packages
 prisma/                # shared PostgreSQL schema and migrations
 scripts/               # repository-level release and acceptance tooling
@@ -43,6 +44,15 @@ customer-only OTP → restaurant → menu → cart → cash-order → status flo
 `/api/v1`. Start it with `npm run mobile:android`; Android emulators use
 `http://10.0.2.2:3000` by default. Configuration, checks and iOS EAS steps are
 documented in [apps/customer-mobile/README.md](./apps/customer-mobile/README.md).
+
+### Courier mobile
+
+`@deliver/courier-mobile` is an Expo SDK 56 workspace for the courier shift:
+OTP login, line availability, offers, pickup, delivery, cash confirmation and
+completion. Start it with `npm run courier-mobile:android`; Android emulators use
+`http://10.0.2.2:3000` by default. Configuration and QA steps are documented in
+[apps/courier-mobile/README.md](./apps/courier-mobile/README.md), and its API is
+documented in [docs/COURIER_API.md](./docs/COURIER_API.md).
 
 ## Getting Started
 
@@ -98,6 +108,16 @@ npm run smoke:customer-api
 This verifies OTP login, restaurant and menu discovery, server-side cart
 pricing, idempotent cash checkout, status lookup and logout. It refuses
 non-local URLs because it creates a real order.
+
+Run the courier JSON API smoke against a running local app:
+
+```bash
+npm run smoke:courier-api
+```
+
+This verifies courier OTP authentication, role scoping and the dashboard API.
+Use `npm run smoke:prepare-courier-mobile` to create a short-lived local offer
+for Android/manual courier lifecycle QA.
 
 Run the web pilot acceptance against a running app:
 

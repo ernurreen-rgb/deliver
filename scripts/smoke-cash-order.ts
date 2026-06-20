@@ -678,6 +678,41 @@ export async function runSmokeCashOrder() {
   };
 }
 
+export async function prepareCourierMobileOfferFixture() {
+  assertSmokeWritesAllowed();
+  await prepareSmokeFixturesForRerun();
+
+  const order = await createSmokeOrder();
+  await runRestaurantFlow(order.id);
+
+  const dispatchResult = await dispatchNextCourierOffer(order.deliveryId);
+  assert(
+    dispatchResult.status === "offer_created" ||
+      dispatchResult.status === "active_offer_exists",
+    `Dispatch failed with status ${dispatchResult.status}.`,
+  );
+
+  const fixtures = await requireFixtures();
+  const offer = await getPrisma().courierOffer.findFirst({
+    where: {
+      deliveryId: order.deliveryId,
+      courierId: fixtures.courier.id,
+      status: "pending",
+    },
+    orderBy: { createdAt: "desc" },
+  });
+  assert(offer, "Courier offer was not created for courier-mobile QA.");
+
+  return {
+    ok: true,
+    orderNumber: order.publicNumber,
+    deliveryId: order.deliveryId,
+    offerId: offer.id,
+    offerExpiresAt: offer.expiresAt.toISOString(),
+    total: order.total,
+  };
+}
+
 if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   runSmokeCashOrder()
     .then((result) => {

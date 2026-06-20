@@ -2,6 +2,7 @@
 
 # dependencies
 /node_modules
+**/node_modules/
 /.pnp
 .pnp.*
 .yarn/*
@@ -19,6 +20,10 @@
 
 # production
 /build
+apps/*-mobile/dist/
+
+# Expo
+**/.expo/
 
 # misc
 .DS_Store

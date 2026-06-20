@@ -21,7 +21,7 @@ const IGNORED_DIRECTORIES = new Set([
 ]);
 const rootDir = process.cwd();
 const webSourceDir = "apps/web/src";
-const customerMobileDir = "apps/customer-mobile";
+const mobileAppDirs = ["apps/customer-mobile", "apps/courier-mobile"] as const;
 const packageDependencyRules: Record<string, ReadonlySet<string>> = {
   auth: new Set(["contracts", "database"]),
   contracts: new Set(),
@@ -269,12 +269,16 @@ function addPackageBoundaryViolations(input: {
   }
 }
 
-function addCustomerMobileBoundaryViolations(input: {
+function addMobileAppBoundaryViolations(input: {
   importPath: string;
   relativeFilePath: string;
   violations: Violation[];
 }) {
-  if (!input.relativeFilePath.startsWith(`${customerMobileDir}/`)) {
+  const mobileAppDir = mobileAppDirs.find((directory) =>
+    input.relativeFilePath.startsWith(`${directory}/`),
+  );
+
+  if (!mobileAppDir) {
     return;
   }
 
@@ -287,7 +291,7 @@ function addCustomerMobileBoundaryViolations(input: {
     input.violations.push({
       file: input.relativeFilePath,
       importPath: input.importPath,
-      reason: "customer-mobile must not depend on the Next.js app",
+      reason: `${path.basename(mobileAppDir)} must not depend on the Next.js app`,
     });
   }
 
@@ -296,7 +300,7 @@ function addCustomerMobileBoundaryViolations(input: {
     input.violations.push({
       file: input.relativeFilePath,
       importPath: input.importPath,
-      reason: `customer-mobile cannot import server package @deliver/${deliverPackage}`,
+      reason: `${path.basename(mobileAppDir)} cannot import server package @deliver/${deliverPackage}`,
     });
   }
 }
@@ -336,7 +340,9 @@ function addRoleShellLayoutViolations(violations: Violation[]) {
 function main() {
   const sourceRoot = path.join(rootDir, webSourceDir);
   const packagesRoot = path.join(rootDir, "packages");
-  const customerMobileRoot = path.join(rootDir, customerMobileDir);
+  const mobileAppRoots = mobileAppDirs.map((directory) =>
+    path.join(rootDir, directory),
+  );
 
   if (!existsSync(sourceRoot)) {
     throw new Error(`Missing source root: ${sourceRoot}`);
@@ -345,7 +351,9 @@ function main() {
   const violations: Violation[] = [];
   const files = [
     ...walkFiles(sourceRoot),
-    ...(existsSync(customerMobileRoot) ? walkFiles(customerMobileRoot) : []),
+    ...mobileAppRoots.flatMap((directory) =>
+      existsSync(directory) ? walkFiles(directory) : [],
+    ),
     ...(existsSync(packagesRoot) ? walkFiles(packagesRoot) : []),
   ];
 
@@ -371,7 +379,7 @@ function main() {
         relativeFilePath,
         violations,
       });
-      addCustomerMobileBoundaryViolations({
+      addMobileAppBoundaryViolations({
         importPath,
         relativeFilePath,
         violations,

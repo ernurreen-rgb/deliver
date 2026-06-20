@@ -87,6 +87,16 @@ Run `npm.cmd run mobile:export` before an EAS build to prove both platform
 bundles. iOS cloud-build setup is documented in
 `apps/customer-mobile/README.md`; EAS and Apple credentials stay outside git.
 
+For courier mobile, keep the same API running and use:
+
+```powershell
+npm.cmd run courier-mobile:android
+```
+
+The pilot courier is `+77000000003`. Prepare a short-lived local delivery offer
+with `npm.cmd run smoke:prepare-courier-mobile`. Android/iOS export and EAS setup
+are documented in `apps/courier-mobile/README.md`.
+
 Verify a local production build through `next start`:
 
 ```powershell

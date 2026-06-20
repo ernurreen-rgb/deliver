@@ -108,3 +108,29 @@ export async function requireApiCustomer(request: NextRequest) {
 
   return { user } as const;
 }
+
+export async function requireApiCourier(request: NextRequest) {
+  const user = await getApiCurrentUser(request);
+
+  if (!user) {
+    return {
+      response: jsonError({
+        status: 401,
+        code: "unauthorized",
+        message: "Authentication is required.",
+      }),
+    } as const;
+  }
+
+  if (!user.roles.some((role) => role === "courier" || role === "admin")) {
+    return {
+      response: jsonError({
+        status: 403,
+        code: "forbidden",
+        message: "Courier role is required.",
+      }),
+    } as const;
+  }
+
+  return { user } as const;
+}

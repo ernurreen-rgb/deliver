@@ -9,6 +9,7 @@
     "./cart": "./src/cart.ts",
     "./catalog": "./src/catalog.ts",
     "./common": "./src/common.ts",
+    "./courier": "./src/courier.ts",
     "./domain": "./src/domain.ts",
     "./orders": "./src/orders.ts"
   }
