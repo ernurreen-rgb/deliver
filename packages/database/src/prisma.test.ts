@@ -13,7 +13,7 @@ vi.mock("@prisma/adapter-pg", () => ({
   PrismaPg: mocks.prismaPg,
 }));
 
-vi.mock("@/generated/prisma/client", () => ({
+vi.mock("./generated/prisma/client", () => ({
   PrismaClient: mocks.prismaClient,
 }));
 
@@ -42,7 +42,7 @@ describe("getPrisma", () => {
   });
 
   it("reuses one client and passes bounded pg settings to the adapter", async () => {
-    const { getPrisma } = await import("@/lib/db/prisma");
+    const { getPrisma } = await import("./prisma");
 
     const first = getPrisma();
     const second = getPrisma();

@@ -34,7 +34,7 @@
 - standalone backend API;
 - worker/jobs service.
 
-## 3. Предлагаемая структура проекта
+## 3. Текущая структура проекта
 
 ```text
 apps/
@@ -74,13 +74,22 @@ apps/
       workers/
       types/
 packages/
-  contracts/
-  domain/
-  database/
-  auth/
+  contracts/            # shared DTOs and API/domain contracts
+  domain/               # framework-independent pure domain helpers
+  database/             # database config, Prisma singleton and generated client exports
+  auth/                 # auth/session and role-access helpers
 prisma/
 scripts/
 ```
+
+Root npm workspaces cover `apps/*` and `packages/*`. The existing Next.js app is
+`@deliver/web`; shared code is extracted into `@deliver/contracts`,
+`@deliver/domain`, `@deliver/database` and `@deliver/auth`.
+
+Prisma remains a single shared PostgreSQL schema in `prisma/schema.prisma`.
+The generated client output is `packages/database/src/generated/prisma` and is
+not committed. Web compatibility wrappers remain in `apps/web/src/lib/db` and
+`apps/web/src/generated/prisma` while existing imports are migrated gradually.
 
 ## 4. Доменные модули
 

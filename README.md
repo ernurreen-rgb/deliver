@@ -19,6 +19,22 @@ The root `npm run dev`, `npm run build` and `npm run start` commands delegate to
 `@deliver/web`. Vercel builds from the repository root and publishes
 `apps/web/.next`, so the existing project linkage and cron route remain valid.
 
+### Shared packages
+
+- `@deliver/contracts` contains API/domain DTOs that are safe to share with web
+  and future mobile clients.
+- `@deliver/domain` contains framework-independent pure domain helpers such as
+  money formatting, delivery pricing, menu image URLs and order status helpers.
+- `@deliver/database` owns database configuration, lazy Prisma client
+  initialization and the generated Prisma client exports.
+- `@deliver/auth` contains reusable auth/session and role-access helpers.
+
+Prisma generates the client into `packages/database/src/generated/prisma`.
+Generated files are ignored by git and recreated by `npm install`/`npm run
+db:generate`. The web app keeps compatibility wrappers under
+`apps/web/src/generated/prisma` and `apps/web/src/lib/db` so existing imports
+continue to work while the split-ready packages are adopted incrementally.
+
 ## Getting Started
 
 ### Local database

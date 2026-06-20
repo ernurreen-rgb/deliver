@@ -1,0 +1,15 @@
+{
+  "name": "@deliver/domain",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./delivery-pricing": "./src/delivery/pricing.ts",
+    "./menu-image": "./src/menu/image-url.ts",
+    "./money": "./src/money/format.ts",
+    "./operator-attention": "./src/orders/operator-attention.ts",
+    "./order-public-number": "./src/orders/public-number.ts",
+    "./order-timeline": "./src/orders/timeline.ts"
+  }
+}

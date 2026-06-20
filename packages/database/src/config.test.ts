@@ -5,7 +5,7 @@ import {
   DATABASE_POOL_MAX_ENV,
   createPrismaPgConfig,
   getPrismaPoolSettings,
-} from "@/lib/db/config";
+} from "./config";
 
 describe("Prisma pg configuration", () => {
   it("uses bounded serverless-safe pool defaults", () => {

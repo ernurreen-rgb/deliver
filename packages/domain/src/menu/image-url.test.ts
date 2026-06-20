@@ -3,7 +3,7 @@ import {
   isMenuDemoImagePath,
   MENU_IMAGE_URL_MAX_LENGTH,
   normalizeMenuImageUrl,
-} from "@/domains/menu/image-url";
+} from "./image-url";
 
 describe("normalizeMenuImageUrl", () => {
   it("accepts empty image URLs", () => {

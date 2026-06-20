@@ -9,9 +9,20 @@ type Violation = {
 };
 
 const SOURCE_EXTENSIONS = new Set([".ts", ".tsx"]);
-const IGNORED_DIRECTORIES = new Set([".git", ".next", "node_modules"]);
+const IGNORED_DIRECTORIES = new Set([
+  ".git",
+  ".next",
+  "generated",
+  "node_modules",
+]);
 const rootDir = process.cwd();
 const webSourceDir = "apps/web/src";
+const packageDependencyRules: Record<string, ReadonlySet<string>> = {
+  auth: new Set(["contracts", "database"]),
+  contracts: new Set(),
+  database: new Set(),
+  domain: new Set(["contracts"]),
+};
 
 function toPosixPath(value: string) {
   return value.replaceAll("\\", "/");
@@ -187,6 +198,72 @@ function addLayerViolations(input: {
   }
 }
 
+function addPackageBoundaryViolations(input: {
+  file: string;
+  importPath: string;
+  relativeFilePath: string;
+  violations: Violation[];
+}) {
+  const match = input.relativeFilePath.match(/^packages\/([^/]+)\/src\//);
+  if (!match) {
+    return;
+  }
+
+  const packageName = match[1];
+  const allowedDependencies = packageDependencyRules[packageName];
+
+  if (!allowedDependencies) {
+    input.violations.push({
+      file: input.relativeFilePath,
+      importPath: input.importPath,
+      reason: `package ${packageName} is missing an architecture dependency rule`,
+    });
+    return;
+  }
+
+  const resolvedRelativePath =
+    resolveRelativeImport(input.file, input.importPath) ?? input.importPath;
+
+  if (
+    input.importPath.startsWith("@/") ||
+    resolvedRelativePath.startsWith(`${webSourceDir}/`) ||
+    input.importPath.includes("apps/web")
+  ) {
+    input.violations.push({
+      file: input.relativeFilePath,
+      importPath: input.importPath,
+      reason: "shared packages must not depend on app-local modules",
+    });
+  }
+
+  const deliverPackage = input.importPath.match(/^@deliver\/([^/]+)/)?.[1];
+  if (
+    deliverPackage &&
+    deliverPackage !== packageName &&
+    !allowedDependencies.has(deliverPackage)
+  ) {
+    input.violations.push({
+      file: input.relativeFilePath,
+      importPath: input.importPath,
+      reason: `${packageName} package cannot depend on @deliver/${deliverPackage}`,
+    });
+  }
+
+  if (
+    (packageName === "contracts" || packageName === "domain") &&
+    (input.importPath === "next" ||
+      input.importPath.startsWith("next/") ||
+      input.importPath === "react" ||
+      input.importPath.startsWith("react/"))
+  ) {
+    input.violations.push({
+      file: input.relativeFilePath,
+      importPath: input.importPath,
+      reason: `${packageName} package must stay framework-independent`,
+    });
+  }
+}
+
 function addRoleShellLayoutViolations(violations: Violation[]) {
   for (const surface of platformSurfaces) {
     if (surface.id === "api") {
@@ -221,13 +298,17 @@ function addRoleShellLayoutViolations(violations: Violation[]) {
 
 function main() {
   const sourceRoot = path.join(rootDir, webSourceDir);
+  const packagesRoot = path.join(rootDir, "packages");
 
   if (!existsSync(sourceRoot)) {
     throw new Error(`Missing source root: ${sourceRoot}`);
   }
 
   const violations: Violation[] = [];
-  const files = walkFiles(sourceRoot);
+  const files = [
+    ...walkFiles(sourceRoot),
+    ...(existsSync(packagesRoot) ? walkFiles(packagesRoot) : []),
+  ];
 
   for (const file of files) {
     const relativeFilePath = getRelativeSourcePath(file);
@@ -240,6 +321,12 @@ function main() {
         violations,
       });
       addLayerViolations({
+        file,
+        importPath,
+        relativeFilePath,
+        violations,
+      });
+      addPackageBoundaryViolations({
         file,
         importPath,
         relativeFilePath,

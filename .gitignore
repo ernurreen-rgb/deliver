@@ -47,7 +47,10 @@ dev-server*.log
 *.tsbuildinfo
 next-env.d.ts
 
-/apps/web/src/generated/prisma
+/packages/database/src/generated/prisma
+/apps/web/src/generated/prisma/*
+!/apps/web/src/generated/prisma/client.ts
+!/apps/web/src/generated/prisma/enums.ts
 
 .vercel
 .env*.local

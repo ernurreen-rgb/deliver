@@ -28,6 +28,12 @@ const contentSecurityPolicy = [
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: monorepoRoot,
+  transpilePackages: [
+    "@deliver/auth",
+    "@deliver/contracts",
+    "@deliver/database",
+    "@deliver/domain",
+  ],
   turbopack: {
     root: monorepoRoot,
   },

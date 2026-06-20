@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { getRestaurantStaffContextForUser } from "@/domains/auth/restaurant-staff-context";
+import { getRestaurantStaffContextForUser } from "./restaurant-staff-context";
 
 const prismaMocks = vi.hoisted(() => ({
   prisma: {
@@ -9,7 +9,7 @@ const prismaMocks = vi.hoisted(() => ({
   },
 }));
 
-vi.mock("@/lib/db/prisma", () => ({
+vi.mock("@deliver/database", () => ({
   getPrisma: () => prismaMocks.prisma,
 }));
 

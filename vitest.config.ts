@@ -12,6 +12,10 @@ export default defineConfig({
   },
   test: {
     environment: "node",
-    include: ["apps/web/src/**/*.test.ts", "scripts/**/*.test.ts"],
+    include: [
+      "apps/web/src/**/*.test.ts",
+      "packages/**/*.test.ts",
+      "scripts/**/*.test.ts",
+    ],
   },
 });

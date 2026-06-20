@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildOperatorAttention,
   minutesSince,
-} from "@/domains/orders/operator-attention";
+} from "./operator-attention";
 
 const baseInput = {
   orderStatus: "accepted",

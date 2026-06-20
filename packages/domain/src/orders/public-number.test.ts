@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createPublicOrderNumber } from "@/domains/orders/public-number";
+import { createPublicOrderNumber } from "./public-number";
 
 describe("createPublicOrderNumber", () => {
   it("uses the stable public order format", () => {

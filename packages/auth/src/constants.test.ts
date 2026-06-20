@@ -14,7 +14,7 @@ import {
   isDevOtpPhoneAllowed,
   parseClosedPilotOtpPhoneAllowlist,
   shouldExposeDevOtpCode,
-} from "@/domains/auth/constants";
+} from "./constants";
 
 describe("OTP security constants", () => {
   it("keeps request and verify throttles explicit", () => {

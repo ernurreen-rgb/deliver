@@ -1,0 +1,24 @@
+{
+  "name": "@deliver/auth",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./authorization": "./src/authorization.ts",
+    "./constants": "./src/constants.ts",
+    "./crypto": "./src/crypto.ts",
+    "./phone": "./src/phone.ts",
+    "./redirects": "./src/redirects.ts",
+    "./restaurant-staff-context": "./src/restaurant-staff-context.ts",
+    "./session": "./src/session.ts"
+  },
+  "dependencies": {
+    "@deliver/contracts": "*",
+    "@deliver/database": "*"
+  },
+  "peerDependencies": {
+    "next": "^16.2.6",
+    "react": "^19.2.4"
+  }
+}

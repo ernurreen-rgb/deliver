@@ -3,7 +3,7 @@ import {
   DEFAULT_AUTH_REDIRECT_PATH,
   buildLoginPath,
   sanitizeAuthRedirectPath,
-} from "@/domains/auth/redirects";
+} from "./redirects";
 
 describe("auth redirects", () => {
   it("allows only local application paths", () => {

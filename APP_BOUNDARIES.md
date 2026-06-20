@@ -28,8 +28,19 @@
 5. `apps/web/src/domains/*` не импортирует `apps/web/src/app/*`, `apps/web/src/components/*` или `apps/web/src/workers/*`.
 6. Shared UI в `apps/web/src/components/*` не импортирует route files и worker code.
 7. Worker code не импортирует App Router и UI.
-8. База данных остается общей. Доступ к Prisma идет через `apps/web/src/lib/db/prisma` до выделения `packages/database`.
+8. База данных остается общей. Новый общий доступ к Prisma идет через `@deliver/database`; `apps/web/src/lib/db/prisma` остается только compatibility wrapper для существующего web-кода.
 9. Server Actions пока могут жить в domain-модулях и делать `redirect(...)`. Перед физическим split эти actions нужно будет обернуть в per-app adapters, чтобы доменные операции не знали URL конкретного приложения.
+
+## Shared packages
+
+Текущие workspace-пакеты:
+
+| Package | Назначение | Ограничения |
+| --- | --- | --- |
+| `@deliver/contracts` | Общие DTO и типы для API/domain boundary. | Не зависит от app-кода, Next.js, React или базы. |
+| `@deliver/domain` | Чистая доменная логика без framework/runtime привязки. | Может зависеть только от `@deliver/contracts`. |
+| `@deliver/database` | Runtime database config, lazy Prisma client и generated Prisma exports. | Не импортирует app-код. Generated client находится в `packages/database/src/generated/prisma`. |
+| `@deliver/auth` | Auth/session helpers и role-access helpers. | Может зависеть от `@deliver/contracts` и `@deliver/database`, но не от route/UI кода. |
 
 ## Проверка
 
@@ -39,7 +50,7 @@
 npm run architecture:check
 ```
 
-Команда проверяет импорты и падает, если новый код нарушает текущие app boundaries. Она также включена в `npm run release:gate`.
+Команда проверяет импорты в `apps/web/src` и `packages/*/src` и падает, если новый код нарушает текущие app/package boundaries. Она также включена в `npm run release:gate`.
 
 ## Как развивать дальше
 

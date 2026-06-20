@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildOrderTimeline } from "@/domains/orders/timeline";
+import { buildOrderTimeline } from "./timeline";
 
 describe("buildOrderTimeline", () => {
   it("keeps restaurant confirmation as the current step before courier dispatch", () => {

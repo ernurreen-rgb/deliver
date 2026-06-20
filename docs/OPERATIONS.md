@@ -46,6 +46,15 @@ npm.cmd run db:migrate:deploy
 npm.cmd run db:seed
 ```
 
+Prisma client is generated into
+`packages/database/src/generated/prisma`. It is not committed; `npm install`
+runs `prisma generate` through `postinstall`, and schema changes can be
+regenerated explicitly with:
+
+```powershell
+npm.cmd run db:generate
+```
+
 Start the development app against that local database:
 
 ```powershell
